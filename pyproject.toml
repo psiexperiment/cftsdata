@@ -26,8 +26,8 @@ test = ["pytest", "pytest-console-scripts"]
 [project.scripts]
 cfts-zip-data = "cftsdata.postprocess:zip_data"
 summarize-abr-file = "cftsdata.summarize_abr:main_file"
-summarize-abr-folder = "cftsdata.io.summarize_abr:main_folder"
-summarize-iec-folder = "cftsdata.io.summarize_iec:main_folder"
+summarize-abr-folder = "cftsdata.summarize_abr:main_folder"
+summarize-iec-folder = "cftsdata.summarize_iec:main_folder"
 
 [build-system]
 requires = ["setuptools>=61.2", "wheel", "setuptools_scm[toml]>=3.4.3"]
