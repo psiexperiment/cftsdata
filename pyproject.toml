@@ -1,42 +1,37 @@
 [project]
-name = "cfts"
-description = "Paradigms for running auditory function tests using psiexperiment"
+name = "cftsdata"
+description = "Lightweight tools for managing CFTS data"
 requires-python = ">=3.7"
 license = {file = "LICENSE.txt"}
 authors = [
     {name = "Brad Buran", email="buran@ohsu.edu"},
+    {name = "Brad Buran", email="bburan@alum.mit.edu"},
+    {name = "Buran Consulting, LLC", email="info@bradburan.com"},
 ]
 maintainers = [
     {name = "Brad Buran", email="buran@ohsu.edu"},
+    {name = "Brad Buran", email="bburan@alum.mit.edu"},
+    {name = "Buran Consulting, LLC", email="info@bradburan.com"},
 ]
 dependencies = [
-    "psiaudio",
-	"psiexperiment",
-    "enaml[qt5-pyqt] >=0.13.0",
-    "tqdm",
+    "psidata[zarr]",
+	"psiaudio",
 ]
 dynamic = ["version"]
 
 [project.optional-dependencies]
-ni = ["pydaqmx"]
-tdt = ["tdtpy >=0.9.0"]
 docs = ["sphinx", "sphinx_rtd_theme", "pygments-enaml"]
-test = ["pytest", "pytest-console-scripts", "matplotlib"] # Matplotlib is used in some of the validation scripts.
-zarr-backend = ["zarr"]
-dev = ["coloredlogs"]
+test = ["pytest", "pytest-console-scripts"]
 
 [project.scripts]
-cfts = "cfts.app.main:cfts"
-cfts-cal = "cfts.app.main:cfts_calibration"
-cfts-zip-data = "cfts.io.postprocess:zip_data"
-summarize-abr-file = "cfts.io.summarize_abr:main_file"
-summarize-abr-folder = "cfts.io.summarize_abr:main_folder"
-summarize-iec-folder = "cfts.io.summarize_iec:main_folder"
-summarize-dpoae-folder = "cfts.io.summarize_dpoae:main_folder"
+cfts-zip-data = "cftsdata.postprocess:zip_data"
+summarize-abr-file = "cftsdata.summarize_abr:main_file"
+summarize-abr-folder = "cftsdata.io.summarize_abr:main_folder"
+summarize-iec-folder = "cftsdata.io.summarize_iec:main_folder"
 
 [build-system]
 requires = ["setuptools>=61.2", "wheel", "setuptools_scm[toml]>=3.4.3"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
-write_to = "cfts/version.py"
+write_to = "cftsdata/version.py"
