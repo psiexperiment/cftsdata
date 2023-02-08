@@ -1,6 +1,7 @@
 [project]
 name = "cftsdata"
 description = "Lightweight tools for managing CFTS data"
+readme = "README.md"
 requires-python = ">=3.7"
 license = {file = "LICENSE.txt"}
 authors = [
