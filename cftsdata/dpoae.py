@@ -3,7 +3,7 @@ log = logging.getLogger(__name__)
 
 from functools import lru_cache
 
-from psi.data.io.api import Recording
+from psidata.api import Recording
 
 # Max size of LRU cache
 MAXSIZE = 1024

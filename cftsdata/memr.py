@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from psi.data.io.api import Recording
+from psidata.api import Recording
 from . import util
 
 # Max size of LRU cache
