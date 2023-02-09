@@ -1,0 +1,39 @@
+[project]
+name = "cftsdata"
+description = "Lightweight tools for managing CFTS data"
+readme = "README.md"
+requires-python = ">=3.7"
+license = {file = "LICENSE.txt"}
+authors = [
+    {name = "Brad Buran", email="buran@ohsu.edu"},
+    {name = "Brad Buran", email="bburan@alum.mit.edu"},
+    {name = "Buran Consulting, LLC", email="info@bradburan.com"},
+]
+maintainers = [
+    {name = "Brad Buran", email="buran@ohsu.edu"},
+    {name = "Brad Buran", email="bburan@alum.mit.edu"},
+    {name = "Buran Consulting, LLC", email="info@bradburan.com"},
+]
+dependencies = [
+    "psidata[zarr-backend]",
+	"psiaudio",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+docs = ["sphinx", "sphinx_rtd_theme", "pygments-enaml"]
+test = ["pytest", "pytest-console-scripts"]
+
+[project.scripts]
+cfts-zip-data = "cftsdata.postprocess:zip_data"
+summarize-abr-file = "cftsdata.summarize_abr:main_file"
+summarize-abr-folder = "cftsdata.summarize_abr:main_folder"
+summarize-iec-folder = "cftsdata.summarize_iec:main_folder"
+summarize-dpoae-folder = "cftsdata.summarize_dpoae:main_folder"
+
+[build-system]
+requires = ["setuptools>=61.2", "wheel", "setuptools_scm[toml]>=3.4.3"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+write_to = "cftsdata/version.py"

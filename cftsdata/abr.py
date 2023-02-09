@@ -6,7 +6,7 @@ Example
 
 .. code-block:: python
 
-    from psi.data.io import abr
+    from psidata.api import abr
     filename = '20220601-1200 ID1234 abr_io'
     with abr.load(filename) as fh:
         epochs = fh.get_epochs()
@@ -31,8 +31,7 @@ import numpy as np
 import pandas as pd
 from scipy import signal
 
-from psi.util import PSIJsonEncoder
-from psi.data.io.api import Recording
+from psidata.api import Recording
 
 
 # Max size of LRU cache
@@ -67,8 +66,7 @@ def cache(f, name=None):
         cache_kwargs.pop('self')
         cache_kwargs.pop('cb')
 
-        string = json.dumps(cache_kwargs, sort_keys=True, allow_nan=True,
-                            cls=PSIJsonEncoder)
+        string = json.dumps(cache_kwargs, sort_keys=True, allow_nan=True)
         uuid = hashlib.sha256(string.encode('utf8')).hexdigest()
 
         cache_path = self.base_path / 'cache'

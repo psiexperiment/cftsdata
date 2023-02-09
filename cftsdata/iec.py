@@ -1,4 +1,4 @@
-from psi.data.io.api import Recording
+from psidata.api import Recording
 
 
 class IEC(Recording):

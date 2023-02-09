@@ -15,13 +15,13 @@ import pandas as pd
 
 from psi import get_config
 from psiaudio.plot import waterfall_plot
-from cfts.io import abr
+
+from . import abr
 
 from .util import add_default_options, DatasetManager, process_files
 
 
 COLUMNS = ['frequency', 'level', 'polarity']
-DATA_ROOT = get_config('DATA_ROOT')
 
 
 def get_file_template(filename, offset, duration, filter_settings, n_epochs,
