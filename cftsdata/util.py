@@ -119,6 +119,8 @@ class DatasetManager:
         filename = self.get_proc_filename(suffix)
         df.to_csv(filename)
 
+    save_df = save_dataframe
+
     def clear(self):
         for filename in self.get_proc_path().iterdir():
             filename.unlink()
