@@ -2,8 +2,6 @@ import os
 from pathlib import Path
 
 from psi import get_config
-DATA_ROOT = get_config('DATA_ROOT')
-PROCESSED_ROOT = get_config('PROCESSED_ROOT')
 
 
 def get_cb(cb):
@@ -25,7 +23,7 @@ def get_cb(cb):
 
 
 def add_default_options(parser):
-    parser.add_argument('-f', '--folder', type=str, help='Folder containing data', default=DATA_ROOT)
+    parser.add_argument('folder', type=str, help='Folder containing data')
     parser.add_argument('--reprocess', action='store_true', help='Reprocess all data in folder')
 
 
@@ -70,21 +68,24 @@ def cal_from_epl(name, base_path=None):
 
 class DatasetManager:
 
-    def __init__(self, path, raw_dir=DATA_ROOT, proc_dir=PROCESSED_ROOT,
-                 file_template=None):
+    def __init__(self, path, raw_dir=None, proc_dir=None, file_template=None):
         '''
         Manages paths of processed files given the relative path between the
         raw and processed directory structure.
 
         Parameters
         ----------
-        raw_dir : {str, Path}
+        raw_dir : {None, str, Path}
             Base path containing raw data
-        proc_dir : {str, Path}
+        proc_dir : {None, str, Path}
             Base path containing processed data
         file_template : {None, str}
             If None, defaults to the filename stem
         '''
+        if raw_dir is None:
+            raw_dir = os.environ.get('RAW_DATA_DIR', None)
+        if proc_dir is None:
+            proc_dir = os.environ.get('PROC_DATA_DIR', None)
         self.path = Path(path)
         self.raw_dir = Path(raw_dir)
         self.proc_dir = Path(proc_dir)
