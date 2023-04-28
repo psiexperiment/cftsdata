@@ -47,59 +47,6 @@ MERGE_PATTERN = \
     r'\g<experiment>*'
 
 
-def cache(f, name=None):
-    import inspect
-    s = inspect.signature(f)
-    if name is None:
-        name = f.__code__.co_name
-
-    @wraps(f)
-    def wrapper(self, *args, bypass_cache=False, refresh_cache=False, **kwargs):
-        if bypass_cache:
-            return f(self, *args, **kwargs)
-
-        cb = kwargs.pop('cb', None)
-
-        bound_args = s.bind(self, *args, **kwargs)
-        bound_args.apply_defaults()
-        cache_kwargs = dict(bound_args.arguments)
-        cache_kwargs.pop('self')
-        cache_kwargs.pop('cb')
-
-        string = json.dumps(cache_kwargs, sort_keys=True, allow_nan=True)
-        uuid = hashlib.sha256(string.encode('utf8')).hexdigest()
-
-        cache_path = self.base_path / 'cache'
-        cache_path.mkdir(parents=True, exist_ok=True)
-        cache_file = cache_path / f'{name}-{uuid}-result.pkl'
-        kwargs_cache_file = cache_path / f'{name}-{uuid}-kwargs.pkl'
-
-        result = None
-        try:
-            if not refresh_cache and cache_file.exists():
-                result = pd.read_pickle(cache_file)
-                with open(kwargs_cache_file, 'rb') as fh:
-                    cache_kwargs = pickle.load(fh)
-                    if cache_kwargs != kwargs:
-                        raise ValueError('Cache is corrupted')
-        except:
-            # Cache is corrupted. Delete it.
-            cache_file.unlink()
-
-        if result is None:
-            result = f(self, *args, cb=cb, **kwargs)
-            try:
-                result.to_pickle(cache_file)
-                with open(kwargs_cache_file, 'wb') as fh:
-                    pickle.dump(kwargs, fh)
-            except OSError:
-                warnings.warn(f'Unable to create cache file at {cache_path}')
-
-        return result
-
-    return wrapper
-
-
 class ABRFile(Recording):
     '''
     Wrapper around an ABR file with methods for loading and querying data
@@ -154,7 +101,6 @@ class ABRFile(Recording):
         data = self.__getattr__('erp_metadata')
         return data.rename(columns=lambda x: x.replace('target_tone_', ''))
 
-    @cache
     def get_epochs(self, offset=0, duration=8.5e-3, detrend='constant',
                    downsample=None, reject_threshold=None,
                    reject_mode='absolute', columns='auto', averages=None,
@@ -174,7 +120,6 @@ class ABRFile(Recording):
         result = self._apply_n(result, averages)
         return result
 
-    @cache
     def get_random_segments(self, n, offset=0, duration=8.5e-3,
                             detrend='constant', downsample=None,
                             reject_threshold=None, reject_mode='absolute'):
@@ -191,7 +136,6 @@ class ABRFile(Recording):
         result = fn(n, offset, duration, detrend, downsample=downsample)
         return self._apply_reject(result, reject_threshold, reject_mode)
 
-    @cache
     def get_epochs_filtered(self, filter_lb=300, filter_ub=3000,
                             filter_order=1, offset=-1e-3, duration=10e-3,
                             detrend='constant', pad_duration=10e-3,
@@ -217,7 +161,6 @@ class ABRFile(Recording):
         result = self._apply_n(result, averages)
         return result
 
-    @cache
     def get_random_segments_filtered(self, n, filter_lb=300, filter_ub=3000,
                                      filter_order=1, offset=-1e-3,
                                      duration=10e-3, detrend='constant',
@@ -434,12 +377,6 @@ epochs_docstring = '''
             use the provided value. To return all epochs, use `np.inf`. For
             dual-polarity data, care will be taken to ensure the number of
             trials from each polarity match (even when set to `np.inf`).
-        bypass_cache : bool
-            If true, skip cache mechanism entirely. This also prevents a cache
-            file from being saved.
-        refresh_cache : bool
-            If true, recompute from raw EEG data. If false and data has already
-            been cached, return cached results.
 '''.strip()
 
 
