@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from psi import get_config
 from psiaudio.plot import waterfall_plot
 
 from . import abr
@@ -129,8 +128,11 @@ def plot_waveforms_cb(epochs_mean, filename, name):
     epochs_mean = epochs_mean.reset_index(['epoch_n', 'epoch_reject_ratio'], drop=True)
     grouped = epochs_mean.groupby('frequency')
     n_panels = len(grouped)
-    figure, axes = plt.subplots(1, n_panels, figsize=(6*n_panels, 8.5))
-    for ax, (frequency, data) in zip(axes, grouped):
+    # Normally we want a 1D array of axes, but we have to disable squeezing
+    # because if n_panels is 1, then we end up with an axes instead of a 1D
+    # array of axes. So, we get a 2D array and then extract the first row.
+    figure, axes = plt.subplots(1, n_panels, figsize=(6*n_panels, 8.5), squeeze=False)
+    for ax, (frequency, data) in zip(axes[0], grouped):
         waterfall_plot(ax, data)
         ax.set_xlabel('Time (msec)')
         ax.set_title(f'{frequency * 1e-3:0.2f} Hz')
@@ -248,81 +250,79 @@ def process_file(filename, offset=-1e-3, duration=10e-3,
     # Load the epochs. The callbacks for loading the epochs return a value in
     # the range 0 ... 1. Since this only represents "half" the total work we
     # need to do, rescale to the range 0 ... 0.5.
-    cb = manager.create_cb(cb)
-    cb(0)
+    with manager.create_cb(cb) as cb:
+        def cb_rescale(frac):
+            nonlocal cb
+            cb(frac * 0.5)
 
-    def cb_rescale(frac):
-        nonlocal cb
-        cb(frac * 0.5)
+        epochs = _get_epochs(fh, offset + latency_correction, duration,
+                            filter_settings, cb=cb_rescale, downsample=downsample)
 
-    epochs = _get_epochs(fh, offset + latency_correction, duration,
-                         filter_settings, cb=cb_rescale, downsample=downsample)
+        if gain_correction != 1:
+            epochs = epochs * gain_correction
 
-    if gain_correction != 1:
-        epochs = epochs * gain_correction
+        if latency_correction != 0:
+            new_idx = [(*r[:-1], r[-1] - latency_correction) for r in epochs.index]
+            new_idx = pd.MultiIndex.from_tuples(new_idx, names=epochs.index.names)
+            new_col = epochs.columns - latency_correction
+            epochs = pd.DataFrame(epochs.values, index=new_idx, columns=new_col)
 
-    if latency_correction != 0:
-        new_idx = [(*r[:-1], r[-1] - latency_correction) for r in epochs.index]
-        new_idx = pd.MultiIndex.from_tuples(new_idx, names=epochs.index.names)
-        new_col = epochs.columns - latency_correction
-        epochs = pd.DataFrame(epochs.values, index=new_idx, columns=new_col)
+        if debug_mode:
+            return epochs
 
-    if debug_mode:
-        return epochs
+        # Apply the reject
+        reject_threshold = fh.get_setting('reject_threshold')
+        m = np.abs(epochs) < reject_threshold
+        m = m.all(axis=1)
+        epochs = epochs.loc[m]
 
-    # Apply the reject
-    reject_threshold = fh.get_setting('reject_threshold')
-    m = np.abs(epochs) < reject_threshold
-    m = m.all(axis=1)
-    epochs = epochs.loc[m]
+        cb(0.6)
+        if n_epochs is not None:
+            n = int(np.floor(n_epochs / 2))
+            epochs = epochs.groupby(COLUMNS, group_keys=False) \
+                .apply(lambda x: x.iloc[:n])
+        cb(0.7)
 
-    cb(0.6)
-    if n_epochs is not None:
-        n = int(np.floor(n_epochs / 2))
-        epochs = epochs.groupby(COLUMNS, group_keys=False) \
-            .apply(lambda x: x.iloc[:n])
-    cb(0.7)
+        epoch_mean = epochs.groupby(COLUMNS).mean().groupby(COLUMNS[:-1]).mean()
 
-    epoch_mean = epochs.groupby(COLUMNS).mean().groupby(COLUMNS[:-1]).mean()
+        epoch_reject_ratio = 1-m.groupby(COLUMNS[:-1]).mean()
+        epoch_n = epochs.groupby(COLUMNS[:-1]).size()
+        epoch_info = pd.DataFrame({
+            'epoch_n': epoch_n,
+            'epoch_reject_ratio': epoch_reject_ratio,
+        })
+        if not np.all(epoch_mean.index == epoch_info.index):
+            raise ValueError('Programming issue. Please contact developer.')
 
-    epoch_reject_ratio = 1-m.groupby(COLUMNS[:-1]).mean()
-    epoch_n = epochs.groupby(COLUMNS[:-1]).size()
-    epoch_info = pd.DataFrame({
-        'epoch_n': epoch_n,
-        'epoch_reject_ratio': epoch_reject_ratio,
-    })
-    if not np.all(epoch_mean.index == epoch_info.index):
-        raise ValueError('Programming issue. Please contact developer.')
+        # Merge in the N and reject ratio into the index for epoch_mean
+        epoch_info = epoch_info.set_index(['epoch_n', 'epoch_reject_ratio'],
+                                        append=True)
+        epoch_mean.index = epoch_info.index
+        epoch_mean.columns.name = 'time'
 
-    # Merge in the N and reject ratio into the index for epoch_mean
-    epoch_info = epoch_info.set_index(['epoch_n', 'epoch_reject_ratio'],
-                                      append=True)
-    epoch_mean.index = epoch_info.index
-    epoch_mean.columns.name = 'time'
+        manager.get_proc_filename('processing settings.json') \
+            .write_text(json.dumps(settings, indent=2))
+        manager.get_proc_filename('experiment settings.json') \
+            .write_text(json.dumps(md, indent=2))
 
-    manager.get_proc_filename('processing settings.json') \
-        .write_text(json.dumps(settings, indent=2))
-    manager.get_proc_filename('experiment settings.json') \
-        .write_text(json.dumps(md, indent=2))
+        epoch_mean.T.to_csv(manager.get_proc_filename('average waveforms.csv'))
+        cb(0.8)
 
-    epoch_mean.T.to_csv(manager.get_proc_filename('average waveforms.csv'))
-    cb(0.8)
+        if export_single_trial:
+            epochs = add_trial(epochs)
+            epochs.columns.name = 'time'
+            epochs.T.to_csv(manager.get_proc_filename('individual waveforms.csv'))
 
-    if export_single_trial:
-        epochs = add_trial(epochs)
-        epochs.columns.name = 'time'
-        epochs.T.to_csv(manager.get_proc_filename('individual waveforms.csv'))
+        cb(0.9)
+        if plot_waveforms_cb is not None:
+            plot_waveforms_cb(
+                epoch_mean,
+                manager.get_proc_filename('waveforms.pdf'),
+                filename.stem
+            )
 
-    cb(0.9)
-    if plot_waveforms_cb is not None:
-        plot_waveforms_cb(
-            epoch_mean,
-            manager.get_proc_filename('waveforms.pdf'),
-            filename.stem
-        )
-
-    cb(1.0)
-    return True
+        cb(1.0)
+        plt.close('all')
 
 
 def main_file():

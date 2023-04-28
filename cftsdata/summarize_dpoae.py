@@ -84,133 +84,144 @@ def process_file(filename, cb, reprocess=False):
     if not reprocess and manager.is_processed('io.csv'):
         return
     manager.clear()
-    cb = manager.create_cb(cb)
+    with manager.create_cb(cb) as cb:
+        fh = DPOAEFile(filename)
+        fs = fh.system_microphone.fs
+        ramp_time = fh.get_setting('primary_tone_rise_time')
+        n_time = fh.get_setting('n_time')
+        n_fft = fh.get_setting('n_fft')
+        window = fh.get_setting('response_window')
+        f2_f1_ratio = fh.get_setting('f2_f1_ratio')
 
-    cb(0)
-    fh = DPOAEFile(filename)
-    fs = fh.system_microphone.fs
-    ramp_time = fh.get_setting('primary_tone_rise_time')
-    n_time = fh.get_setting('n_time')
-    n_fft = fh.get_setting('n_fft')
-    window = fh.get_setting('response_window')
-    f2_f1_ratio = fh.get_setting('f2_f1_ratio')
+        n_window = window * fs
+        n_trim = (ramp_time * 4) * fs
+        if int(n_window) != n_window:
+            raise ValueError('n_window is not an integer')
+        if int(n_trim) != n_trim:
+            raise ValueError('n_trim is not an integer')
+        n_trim = int(n_trim)
+        n_window = int(n_window)
+        resolution = fs / n_window
 
-    n_window = window * fs
-    n_trim = (ramp_time * 4) * fs
-    if int(n_window) != n_window:
-        raise ValueError('n_window is not an integer')
-    if int(n_trim) != n_trim:
-        raise ValueError('n_trim is not an integer')
-    n_trim = int(n_trim)
-    n_window = int(n_window)
-    resolution = fs / n_window
+        step = 25e-3
+        n_step = int(step * fs)
 
-    step = 25e-3
-    n_step = int(step * fs)
+        cal = fh.system_microphone.get_calibration()
 
-    cal = fh.system_microphone.get_calibration()
+        psd = {}
+        measured = {}
+        f2_prev = None
+        for i, row in fh.results.iterrows():
+            cb(i / len(fh.results))
+            lb = row['dp_start']
+            ub = row['dp_end']
 
-    psd = {}
-    measured = {}
-    f2_prev = None
-    for i, row in fh.results.iterrows():
-        cb(i / len(fh.results))
-        lb = row['dp_start']
-        ub = row['dp_end']
-        f2 = row['f2_frequency']
-        f1 = row['f1_frequency']
-        l2 = row['f2_level']
-        dp = 2 * f1 - f2
-        nf_freq = np.array([-2, -1, 1, 2]) * resolution + dp
+            if ub < lb:
+                log.warning('Incomplete DPOAE segment')
+                continue
 
-        s = fh.system_microphone.get_segment(lb, 0, ub-lb, allow_partial=True)
-        s = s.values[n_trim:]
-
-        m_set = []
-        p_set = []
-        for i in range(1):
-            n_segments, n_left = divmod(s.shape[-1], n_window)
-            s_segmented = s[:-n_left].reshape((n_segments, -1))
-            m = np.isfinite(s_segmented).all(axis=1)
-            s_segmented = s_segmented[m]
-            p = cal.get_db(util.psd_df(s_segmented.mean(axis=0), fs))
-            s = s[n_step:]
-
-            p_set.append(p)
-            m_set.append({
-                'f1_level': p[f1],
-                'f2_level': p[f2],
-                'dp_level': p[dp],
-                'dp_nf': p[nf_freq].mean(),
-                'online_dp_level': row['meas_dpoae_level'],
-                'online_dp_nf': row['dpoae_noise_floor'],
-            })
-        measured[f2, l2] = pd.DataFrame(m_set).mean(axis=0)
-        psd[f2, l2] = pd.DataFrame(p_set).mean(axis=0)
-
-    freq = fh.results['f2_frequency'].unique()
-    level = fh.results['f2_level'].unique()
-    n_freq = len(freq)
-    n_level = len(level)
-
-    measured = pd.DataFrame(
-        measured.values(),
-        index=pd.MultiIndex.from_tuples(measured.keys(), names=['f2', 'l2'])
-    )
-
-    figure, axes = plt.subplots(2, n_freq, figsize=(4 * n_freq, 8), sharex=True, sharey=True)
-    for fi, f2 in enumerate(freq):
-        col = axes[:, fi]
-        m = measured.loc[f2]
-
-        ax = col[0]
-        ax.axhline(0, ls='-', color='k')
-        ax.plot(m['f2_level'], marker='o', color='0.5')
-        ax.plot(m['f1_level'], marker='o', color='k')
-        ax.plot(m['dp_level'], marker='o', color='darkturquoise')
-        ax.plot(m['dp_nf'], marker='x', color='lightblue')
-        ax.set_title(f'{f2} Hz')
-        ax.grid()
-
-        ax = col[1]
-        ax.axhline(0, ls='-', color='k')
-        ax.plot(m['f2_level'], marker='o', color='0.5')
-        ax.plot(m['f1_level'], marker='o', color='k')
-        ax.plot(m['online_dp_level'], marker='o', color='darkorange')
-        ax.plot(m['online_dp_nf'], marker='x', color='coral')
-        ax.grid()
-        ax.set_xlabel('F2 level (dB SPL)')
-
-    for ax in axes[:, 0]:
-        ax.set_ylabel('Measured level (dB SPL)')
-
-    manager.save_fig(figure, 'io.pdf')
-
-    figure, axes = plt.subplots(n_level, n_freq, figsize=(4 * n_freq, 4 * n_level), sharex=True, sharey=True)
-    for fi, f2 in enumerate(freq):
-        for li, l2 in enumerate(level[::-1]):
-            ax = axes[li, fi]
-            f1 = f2 / f2_f1_ratio
+            f2 = row['f2_frequency']
+            f1 = row['f1_frequency']
+            l2 = row['f2_level']
             dp = 2 * f1 - f2
-            ax.axvline(f2, lw=2, color='lightblue')
-            ax.axvline(f1, lw=2, color='lightblue')
-            ax.axvline(dp, lw=2, color='darkturquoise')
-            ax.axhline(0, lw=2, color='0.5')
-            ax.plot(psd[f2, l2].iloc[1:], color='k')
+            nf_freq = np.array([-2, -1, 1, 2]) * resolution + dp
 
-    min_freq = min(2 * (freq / f2_f1_ratio) - freq)
-    max_freq = max(freq)
-    axes[0, 0].axis(xmin=min_freq * 0.8, xmax=max_freq / 0.8)
-    axes[0, 0].set_xscale('octave')
+            s = fh.system_microphone.get_segment(lb, 0, ub-lb, allow_partial=True)
+            s = s.values[n_trim:]
 
-    for ax in axes[-1]:
-        ax.set_xlabel('Frequency (kHz)')
-    for ax in axes[:, 0]:
-        ax.set_xlabel('PSD (dB)')
+            m_set = []
+            p_set = []
+            for i in range(1):
+                n_segments, n_left = divmod(s.shape[-1], n_window)
+                if n_left != 0:
+                    s = s[:-n_left]
+                s_segmented = s.reshape((n_segments, -1))
+                m = np.isfinite(s_segmented).all(axis=1)
+                s_segmented = s_segmented[m]
+                p = cal.get_db(util.psd_df(s_segmented.mean(axis=0), fs))
+                s = s[n_step:]
 
-    manager.save_fig(figure, 'mic spectrum.pdf')
+                p_set.append(p)
+                m_set.append({
+                    'f1_level': p[f1],
+                    'f2_level': p[f2],
+                    'dp_level': p[dp],
+                    'dp_nf': p[nf_freq].mean(),
+                    'online_dp_level': row['meas_dpoae_level'],
+                    'online_dp_nf': row['dpoae_noise_floor'],
+                })
+            measured[f2, l2] = pd.DataFrame(m_set).mean(axis=0)
+            psd[f2, l2] = pd.DataFrame(p_set).mean(axis=0)
 
-    manager.save_dataframe(measured, 'io.csv')
+        freq = fh.results['f2_frequency'].unique()
+        level = fh.results['f2_level'].unique()
+        n_freq = len(freq)
+        n_level = len(level)
+
+        measured = pd.DataFrame(
+            measured.values(),
+            index=pd.MultiIndex.from_tuples(measured.keys(), names=['f2', 'l2'])
+        )
+
+        figure, axes = plt.subplots(2, n_freq, figsize=(4 * n_freq, 8),
+                                    sharex=True, sharey=True, squeeze=False)
+        for fi, f2 in enumerate(freq):
+            col = axes[:, fi]
+            m = measured.loc[f2]
+
+            ax = col[0]
+            ax.axhline(0, ls='-', color='k')
+            ax.plot(m['f2_level'], marker='o', color='0.5')
+            ax.plot(m['f1_level'], marker='o', color='k')
+            ax.plot(m['dp_level'], marker='o', color='darkturquoise')
+            ax.plot(m['dp_nf'], marker='x', color='lightblue')
+            ax.set_title(f'{f2} Hz')
+            ax.grid()
+
+            ax = col[1]
+            ax.axhline(0, ls='-', color='k')
+            ax.plot(m['f2_level'], marker='o', color='0.5')
+            ax.plot(m['f1_level'], marker='o', color='k')
+            ax.plot(m['online_dp_level'], marker='o', color='darkorange')
+            ax.plot(m['online_dp_nf'], marker='x', color='coral')
+            ax.grid()
+            ax.set_xlabel('F2 level (dB SPL)')
+
+        for ax in axes[:, 0]:
+            ax.set_ylabel('Measured level (dB SPL)')
+
+        manager.save_fig(figure, 'io.pdf')
+
+        figure, axes = plt.subplots(n_level, n_freq,
+                                    figsize=(4 * n_freq, 4 * n_level),
+                                    sharex=True, sharey=True, squeeze=False)
+        for fi, f2 in enumerate(freq):
+            for li, l2 in enumerate(level[::-1]):
+                ax = axes[li, fi]
+                f1 = f2 / f2_f1_ratio
+                dp = 2 * f1 - f2
+                ax.axvline(f2, lw=2, color='lightblue')
+                ax.axvline(f1, lw=2, color='lightblue')
+                ax.axvline(dp, lw=2, color='darkturquoise')
+                ax.axhline(0, lw=2, color='0.5')
+                try:
+                    ax.plot(psd[f2, l2].iloc[1:], color='k')
+                except KeyError:
+                    pass
+
+        min_freq = min(2 * (freq / f2_f1_ratio) - freq)
+        max_freq = max(freq)
+        axes[0, 0].axis(xmin=min_freq * 0.8, xmax=max_freq / 0.8)
+        axes[0, 0].set_xscale('octave')
+
+        for ax in axes[-1]:
+            ax.set_xlabel('Frequency (kHz)')
+        for ax in axes[:, 0]:
+            ax.set_xlabel('PSD (dB)')
+
+        manager.save_fig(figure, 'mic spectrum.pdf')
+        manager.save_dataframe(measured, 'io.csv')
+        plt.close('all')
 
 
 def main_folder():
@@ -220,8 +231,3 @@ def main_folder():
     args = parser.parse_args()
     process_files(args.folder, '**/*dpoae_io*',
                   process_file, reprocess=args.reprocess)
-
-
-if __name__ == '__main__':
-    cb = lambda x: x
-    process_file('c:/users/mmm/projects/psi1/data/data/20230127-122543 Sean Sean left 151122 1 dpoae_io.zip', cb)

@@ -1,16 +1,33 @@
 import os
 from pathlib import Path
 
-from psi import get_config
+
+class CallbackManager:
+
+    def __init__(self, cb):
+        self._cb = cb
+
+    def __enter__(self):
+        self._cb(0)
+        return self
+
+    def __call__(self, value):
+        return self._cb(value)
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        self._cb(1)
 
 
-def get_cb(cb):
+def get_cb(cb, suffix=None):
     # Define the callback as a no-op if not provided or sets up tqdm if requested.
     if cb is None:
         cb = lambda x: x
     elif cb == 'tqdm':
         from tqdm import tqdm
-        pbar = tqdm(total=100, bar_format='{l_bar}{bar}[{elapsed}<{remaining}]')
+        mesg = '{l_bar}{bar}[{elapsed}<{remaining}]'
+        if suffix is not None:
+            mesg = mesg + ' ' + suffix
+        pbar = tqdm(total=100, bar_format=mesg)
         def cb(frac):
             nonlocal pbar
             frac *= 100
@@ -37,10 +54,15 @@ def process_files(folder, glob_pattern, fn, cb='tqdm', reprocess=False,
         try:
             fn(filename, cb=cb, reprocess=reprocess)
             success.append(filename)
+        except KeyboardInterrupt:
+            # Don't capture this otherwise it just keeps continuing with the
+            # next file.
+            raise
         except Exception as e:
             if halt_on_error:
                 raise
             errors.append((filename, e))
+            print(f'Error processing {filename}')
     print(f'Successfully processed {len(success)} files with {len(errors)} errors')
 
 
@@ -94,7 +116,7 @@ class DatasetManager:
         self.file_template = file_template
 
     def create_cb(self, cb):
-        return get_cb(cb)
+        return CallbackManager(get_cb(cb, self.path.stem))
 
     def get_proc_path(self):
         return self.proc_dir / self.path.parent.relative_to(self.raw_dir) / self.path.stem
