@@ -334,6 +334,92 @@ def is_abr_experiment(base_path, allow_superset=False):
         return False
 
 
+P_TH = re.compile('Threshold \(dB SPL\): ([\w.-]+)')
+P_FREQ = re.compile('Frequency \(kHz\): ([\d.]+)')
+P_RATER = re.compile(r'.*[\d.]+kHz-(?:(\w+)-)?analyzed.txt')
+
+def load_abr_analysis(filename):
+    '''
+    Load ABR analysis from file
+
+    Parameters
+    ----------
+    filename : {str, pathlib.Path}
+        Name of file to load.
+
+    Returns
+    -------
+
+    '''
+    rename = {
+        'Level': 'level',
+        '1msec Avg': 'baseline',
+        '1msec StDev': 'baseline_std',
+        'P1 Latency': 'p1_latency',
+        'P1 Amplitude': 'p1_amplitude',
+        'N1 Latency': 'n1_latency',
+        'N1 Amplitude': 'n1_amplitude',
+        'P2 Latency': 'p2_latency',
+        'P2 Amplitude': 'p2_amplitude',
+        'N2 Latency': 'n2_latency',
+        'N2 Amplitude': 'n2_amplitude',
+        'P3 Latency': 'p3_latency',
+        'P3 Amplitude': 'p3_amplitude',
+        'N3 Latency': 'n3_latency',
+        'N3 Amplitude': 'n3_amplitude',
+        'P4 Latency': 'p4_latency',
+        'P4 Amplitude': 'p4_amplitude',
+        'N4 Latency': 'n4_latency',
+        'N4 Amplitude': 'n4_amplitude',
+        'P5 Latency': 'p5_latency',
+        'P5 Amplitude': 'p5_amplitude',
+        'N5 Latency': 'n5_latency',
+        'N5 Amplitude': 'n5_amplitude',
+    }
+
+    filename = Path(filename)
+
+    with filename.open() as fh:
+        for line in fh:
+            # Parse the threshold string
+            if line.startswith('Threshold'):
+                th_string = P_TH.search(line).group(1)
+                if th_string == 'None':
+                    th = -np.inf
+                elif th_string == 'inf':
+                    th = np.inf
+                elif th_string == '-inf':
+                    th = -np.inf
+                else:
+                    th = float(th_string)
+
+            if line.startswith('Frequency'):
+                freq = float(P_FREQ.search(line).group(1))*1e3
+
+            if line.startswith('NOTE'):
+                break
+
+        data = pd.io.parsers.read_csv(fh, sep='\t')
+        data.rename(columns=rename, inplace=True)
+
+    # Discard all sub-threshold data
+    m = data['level'] >= th
+    data = data.loc[m]
+
+    keep_cols = list(rename.values())
+    keep = [c for c in data.columns if c in keep_cols]
+    data = data[keep] \
+        .set_index('level', verify_integrity=True) \
+        .sort_index()
+
+    try:
+        rater = P_RATER.match(filename.name).group(1)
+    except AttributeError:
+        raise ValueError(f'Could not parser rater from {filename.name}')
+
+    return freq, th, rater, data
+
+
 filter_docstring = '''
         filter_lb : float
             Lower bound of filter passband, in Hz.
