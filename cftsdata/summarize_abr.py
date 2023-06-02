@@ -82,8 +82,7 @@ def _get_epochs(fh, offset, duration, filter_settings, reject_ratio=None,
     # information for generating the CSV files. Set reject_threshold to np.inf
     # to ensure that nothing gets rejected.
     kwargs = {'offset': offset, 'duration': duration, 'columns': COLUMNS,
-              'reject_threshold': np.inf, 'downsample': downsample, 'cb': cb,
-              'bypass_cache': True}
+              'reject_threshold': np.inf, 'downsample': downsample, 'cb': cb}
 
     if filter_settings is None:
         return fh.get_epochs(**kwargs)
