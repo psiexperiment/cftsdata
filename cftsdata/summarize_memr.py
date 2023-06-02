@@ -9,143 +9,158 @@ from psiaudio.plot import waterfall_plot
 from psiaudio import util
 
 from .memr import InterleavedMEMRFile, SimultaneousMEMRFile
-from .util import DatasetManager
+from .util import add_default_options, DatasetManager, process_files
 
 
 def get_colors(n):
     return getattr(palettable.cmocean.sequential, f'Deep_{n}').mpl_colors
 
 
-def process_interleaved_file(filename, reprocess=False):
+expected_suffixes = [
+    'stimulus train.pdf',
+    'elicitor PSD.pdf',
+    'probe PSD.pdf',
+    'probe level.pdf',
+    'MEMR.pdf',
+]
+
+
+def process_interleaved_file(filename, cb, reprocess=False):
     manager = DatasetManager(filename)
-    if not reprocess and manager.is_processed(['MEMR.pdf']):
+    if not reprocess and manager.is_processed(expected_suffixes):
         return
-    fh = InterleavedMEMRFile(filename)
+    manager.clear(expected_suffixes)
 
-    # Load variables we need from the file
-    probe_cal = fh.probe_microphone.get_calibration()
-    elicitor_cal = fh.elicitor_microphone.get_calibration()
+    with manager.create_cb(cb) as cb:
+        fh = InterleavedMEMRFile(filename)
+        # Load variables we need from the file
+        probe_cal = fh.probe_microphone.get_calibration()
+        elicitor_cal = fh.elicitor_microphone.get_calibration()
 
-    fs = fh.probe_microphone.fs
-    period = fh.get_setting('repeat_period')
-    probe_delay = fh.get_setting('probe_delay')
-    probe_duration = fh.get_setting('probe_duration')
-    elicitor_delay = fh.get_setting('elicitor_envelope_start_time')
-    elicitor_fl = fh.get_setting('elicitor_fl')
-    elicitor_fh = fh.get_setting('elicitor_fh')
-    probe_fl = fh.get_setting('probe_fl')
-    probe_fh = fh.get_setting('probe_fh')
-    elicitor_n = fh.get_setting('elicitor_n')
+        fs = fh.probe_microphone.fs
+        period = fh.get_setting('repeat_period')
+        probe_delay = fh.get_setting('probe_delay')
+        probe_duration = fh.get_setting('probe_duration')
+        elicitor_delay = fh.get_setting('elicitor_envelope_start_time')
+        elicitor_fl = fh.get_setting('elicitor_fl')
+        elicitor_fh = fh.get_setting('elicitor_fh')
+        probe_fl = fh.get_setting('probe_fl')
+        probe_fh = fh.get_setting('probe_fh')
+        elicitor_n = fh.get_setting('elicitor_n')
 
-    # First, plot the entire stimulus train. We only plot the positive polarity
-    # because if we average in the negative polarity, the noise will cancel
-    # out. If we invert then average in the negative polarity, the chirp will
-    # cancel out! We just can't win.
-    epochs = fh.get_epochs()
-    epochs_pos = epochs.xs(1, level='elicitor_polarity')
-    epochs_mean = epochs_pos.groupby('elicitor_level').mean()
+        # First, plot the entire stimulus train. We only plot the positive polarity
+        # because if we average in the negative polarity, the noise will cancel
+        # out. If we invert then average in the negative polarity, the chirp will
+        # cancel out! We just can't win.
+        epochs = fh.get_epochs()
+        epochs_pos = epochs.xs(1, level='elicitor_polarity')
+        epochs_mean = epochs_pos.groupby('elicitor_level').mean()
 
-    figsize = 6, 1 * len(epochs)
-    figure, ax = plt.subplots(1, 1, figsize=figsize)
-    waterfall_plot(ax, epochs, 'elicitor_level', scale_method='mean',
-                   plotkw={'lw': 0.1, 'color': 'k'},
-                   x_transform=lambda x: x*1e3)
-    ax.set_xlabel('Time (msec)')
-    ax.grid(False)
-    # Draw lines showing the repeat boundaries
-    for i in range(elicitor_n + 2):
-        ax.axvline(i * period * 1e3, zorder=-1, alpha=0.5)
-    # Save the figure
-    figure.savefig(manager.get_proc_filename('stimulus train.pdf'), bbox_inches='tight')
-
-    # Now, load the repeats. This essentially segments the epochs DataFrame
-    # into the individual repeat segments.
-    repeats = fh.get_repeats()
-
-    m = repeats.columns >= elicitor_delay
-    elicitor = repeats.loc[:, m]
-    elicitor_psd = util.psd_df(elicitor, fs=fs)
-    elicitor_spl = elicitor_cal.get_db(elicitor_psd)
-    # Be sure to throw out the last "repeat" (which has a silent period after
-    # it rather than another elicitor).
-    elicitor_psd_mean = elicitor_psd.query('repeat < @elicitor_n').groupby('elicitor_level').mean()
-    elicitor_spl_mean = elicitor_cal.get_db(elicitor_psd_mean)
-
-    # Plot the elicitor for each level as a waterfall plot
-    figure, ax = plt.subplots(1, 1, figsize=figsize)
-    waterfall_plot(ax, elicitor_spl_mean.dropna(axis=1), 'elicitor_level', scale_method='mean', plotkw={'lw': 0.1, 'color': 'k'})
-    ax.set_xscale('octave')
-    ax.axis(xmin=0.5e3, xmax=50e3)
-    ax.set_xlabel('Frequency (kHz)')
-    figure.savefig(manager.get_proc_filename('elicitor PSD.pdf'), bbox_inches='tight')
-
-    acoustic_delay = 0.75e-3
-    lb = acoustic_delay + probe_delay
-    ub = acoustic_delay + probe_delay + probe_duration
-    m = (repeats.columns >= lb) & (repeats.columns < ub)
-    probe = repeats.loc[:, m]
-
-    lb = acoustic_delay + probe_delay + probe_duration
-    ub = acoustic_delay + probe_delay + probe_duration * 2
-    m = (repeats.columns >= lb) & (repeats.columns < ub)
-    silence = repeats.loc[:, m]
-
-    figure, ax = plt.subplots(1, 1, figsize=(8, 4))
-    ax.plot(probe.columns.values * 1e3, probe.values.T, alpha=0.1, color='k', lw=0.1);
-    ax.plot(silence.columns.values * 1e3, silence.values.T, alpha=0.1, color='r', lw=0.1);
-    ax.set_xlabel('Time (msec)')
-    ax.set_ylabel('Signal (V)')
-    figure.savefig(manager.get_proc_filename('probe waveform.pdf'), bbox_inches='tight')
-
-    probe_psd = util.psd_df(probe, fs)
-    probe_spl = probe_cal.get_db(probe_psd)
-    silence_psd = util.psd_df(silence, fs)
-    silence_spl = probe_cal.get_db(silence_psd)
-    figure, ax = plt.subplots(1, 1, figsize=(8, 4))
-    ax.plot(silence_spl.columns, silence_spl.values.T, alpha=0.1, color='r', lw=0.1);
-    ax.plot(probe_spl.columns, probe_spl.values.T, alpha=0.1, color='k', lw=0.1);
-    ax.set_xscale('octave')
-    ax.set_xlabel('Frequency (kHz)')
-    ax.set_ylabel('Level (dB SPL)')
-    ax.axvline(probe_fl)
-    ax.axvline(probe_fh)
-    figure.savefig(manager.get_proc_filename('probe PSD.pdf'), bbox_inches='tight')
-
-    probe_level = probe_spl.loc[:, probe_fl:probe_fh].apply(util.rms_rfft_db, axis=1)
-    silence_level = silence_spl.loc[:, probe_fl:probe_fh].apply(util.rms_rfft_db, axis=1)
-
-    lb, ub = np.percentile(silence_level, [2.5, 100-2.5])
-
-    figure, ax = plt.subplots(1, 1, figsize=(4, 4))
-    m = (silence_level > lb) & (silence_level < ub)
-    ax.plot(silence_level.loc[m], probe_level.loc[m], 'k.')
-    ax.plot(silence_level.loc[~m], probe_level.loc[~m], 'r.')
-    ax.set_xlabel('Silence level (dB SPL)')
-    ax.set_ylabel('Probe level (dB SPL)')
-    figure.savefig(manager.get_proc_filename('probe level.pdf'), bbox_inches='tight')
-
-    memr = probe_spl - probe_spl.xs(0, level='repeat')
-    memr_mean = memr.groupby(['repeat', 'elicitor_level']).mean().loc[:, probe_fl:probe_fh]
-
-    probe_n = elicitor_n + 1
-    figure, axes = plt.subplots(1, probe_n, figsize=(8*probe_n, 4))
-    memr_mean_end = memr_mean.loc[elicitor_n, probe_fl:probe_fh]
-
-    for p, ax in enumerate(axes.flat):
-        m = memr_mean.loc[p]
-        colors = get_colors(len(m))
-        for c, (level, value) in zip(colors, m.iterrows()):
-            ax.plot(value, label=f'{level} dB SPL', color=c)
-        ax.set_title(f'Probe {p}')
-
-    ax.legend(bbox_to_anchor=(1, 1), loc='upper left')
-    ax.set_xscale('octave')
-    figure.tight_layout()
-    figure.savefig(manager.get_proc_filename('MEMR.pdf'), bbox_inches='tight')
-    plt.close('all')
+        figsize = 6, 1 * len(epochs)
+        stim_train_figure, ax = plt.subplots(1, 1, figsize=figsize)
+        waterfall_plot(ax, epochs, 'elicitor_level', scale_method='mean',
+                    plotkw={'lw': 0.1, 'color': 'k'},
+                    x_transform=lambda x: x*1e3)
+        ax.set_xlabel('Time (msec)')
+        ax.grid(False)
+        # Draw lines showing the repeat boundaries
+        for i in range(elicitor_n + 2):
+            ax.axvline(i * period * 1e3, zorder=-1, alpha=0.5)
+        # Save the figure
 
 
-def process_simultaneous_file(filename, reprocess=False):
+        # Now, load the repeats. This essentially segments the epochs DataFrame
+        # into the individual repeat segments.
+        repeats = fh.get_repeats()
+
+        m = repeats.columns >= elicitor_delay
+        elicitor = repeats.loc[:, m]
+        elicitor_psd = util.psd_df(elicitor, fs=fs)
+        elicitor_spl = elicitor_cal.get_db(elicitor_psd)
+        # Be sure to throw out the last "repeat" (which has a silent period after
+        # it rather than another elicitor).
+        elicitor_psd_mean = elicitor_psd.query('repeat < @elicitor_n').groupby('elicitor_level').mean()
+        elicitor_spl_mean = elicitor_cal.get_db(elicitor_psd_mean)
+
+        # Plot the elicitor for each level as a waterfall plot
+        elicitor_psd_figure, ax = plt.subplots(1, 1, figsize=figsize)
+        waterfall_plot(ax, elicitor_spl_mean.dropna(axis=1), 'elicitor_level', scale_method='mean', plotkw={'lw': 0.1, 'color': 'k'})
+        ax.set_xscale('octave')
+        ax.axis(xmin=0.5e3, xmax=50e3)
+        ax.set_xlabel('Frequency (kHz)')
+
+        acoustic_delay = 0.75e-3
+        lb = acoustic_delay + probe_delay
+        ub = acoustic_delay + probe_delay + probe_duration
+        m = (repeats.columns >= lb) & (repeats.columns < ub)
+        probe = repeats.loc[:, m]
+
+        lb = acoustic_delay + probe_delay + probe_duration
+        ub = acoustic_delay + probe_delay + probe_duration * 2
+        m = (repeats.columns >= lb) & (repeats.columns < ub)
+        silence = repeats.loc[:, m]
+
+        figure, ax = plt.subplots(1, 1, figsize=(8, 4))
+        ax.plot(probe.columns.values * 1e3, probe.values.T, alpha=0.1, color='k', lw=0.1);
+        ax.plot(silence.columns.values * 1e3, silence.values.T, alpha=0.1, color='r', lw=0.1);
+        ax.set_xlabel('Time (msec)')
+        ax.set_ylabel('Signal (V)')
+        figure.savefig(manager.get_proc_filename('probe waveform.pdf'), bbox_inches='tight')
+
+        probe_psd = util.psd_df(probe, fs)
+        probe_spl = probe_cal.get_db(probe_psd)
+        silence_psd = util.psd_df(silence, fs)
+        silence_spl = probe_cal.get_db(silence_psd)
+        probe_psd_figure, ax = plt.subplots(1, 1, figsize=(8, 4))
+        ax.plot(silence_spl.columns, silence_spl.values.T, alpha=0.1, color='r', lw=0.1);
+        ax.plot(probe_spl.columns, probe_spl.values.T, alpha=0.1, color='k', lw=0.1);
+        ax.set_xscale('octave')
+        ax.set_xlabel('Frequency (kHz)')
+        ax.set_ylabel('Level (dB SPL)')
+        ax.axvline(probe_fl)
+        ax.axvline(probe_fh)
+
+        probe_level = probe_spl.loc[:, probe_fl:probe_fh].apply(util.rms_rfft_db, axis=1)
+        silence_level = silence_spl.loc[:, probe_fl:probe_fh].apply(util.rms_rfft_db, axis=1)
+
+        lb, ub = np.percentile(silence_level, [2.5, 100-2.5])
+
+        probe_level_figure, ax = plt.subplots(1, 1, figsize=(4, 4))
+        m = (silence_level > lb) & (silence_level < ub)
+        ax.plot(silence_level.loc[m], probe_level.loc[m], 'k.')
+        ax.plot(silence_level.loc[~m], probe_level.loc[~m], 'r.')
+        ax.set_xlabel('Silence level (dB SPL)')
+        ax.set_ylabel('Probe level (dB SPL)')
+
+        memr = probe_spl - probe_spl.xs(0, level='repeat')
+        memr_mean = memr.groupby(['repeat', 'elicitor_level']).mean().loc[:, probe_fl:probe_fh]
+
+        probe_n = elicitor_n + 1
+        memr_figure, axes = plt.subplots(1, probe_n, figsize=(8*probe_n, 4))
+        memr_mean_end = memr_mean.loc[elicitor_n, probe_fl:probe_fh]
+
+        for p, ax in enumerate(axes.flat):
+            m = memr_mean.loc[p]
+            colors = get_colors(len(m))
+            for c, (level, value) in zip(colors, m.iterrows()):
+                ax.plot(value, label=f'{level} dB SPL', color=c)
+            ax.set_title(f'Probe {p}')
+
+        ax.legend(bbox_to_anchor=(1, 1), loc='upper left')
+        ax.set_xscale('octave')
+        memr_figure.tight_layout()
+        figure.savefig(manager.get_proc_filename('MEMR.pdf'), bbox_inches='tight')
+
+        manager.save_fig(stim_train_figure, 'stimulus train.pdf')
+        manager.save_fig(elicitor_psd_figure, 'elicitor PSD.pdf')
+        manager.save_fig(probe_psd_figure, 'probe PSD.pdf')
+        manager.save_fig(probe_level_figure, 'probe level.pdf')
+        manager.save_fig(memr_figure, 'MEMR.pdf')
+
+        plt.close('all')
+
+
+def process_simultaneous_file(filename, cb, reprocess=False):
     manager = DatasetManager(filename)
     if not reprocess and manager.is_processed(['elicitor PSD.pdf']):
         return
@@ -160,7 +175,7 @@ def process_simultaneous_file(filename, reprocess=False):
     probe_spl = cal.get_db(util.psd_df(probe_mean, fs=fs))
     probe_spl_mean = probe_spl.groupby(['elicitor_level', 'group']).mean()
     baseline = probe_spl_mean.xs('baseline', level='group')
-    elicitor = probe_spl_mean.xs('elicitor_ss', level='group')
+    elicitor = probe_spl_mean.xs('elicitor', level='group')
     memr = elicitor - baseline
 
     epochs = fh.get_epochs()
@@ -221,22 +236,23 @@ def process_simultaneous_file(filename, reprocess=False):
     plt.close('all')
 
 
-def main():
+def main_simultaneous_folder():
     import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('path', nargs='*')
-    parser.add_argument('--reprocess', action='store_true')
+    parser = argparse.ArgumentParser('Summarize simultaneous MEMR data in folder')
+    add_default_options(parser)
     args = parser.parse_args()
-    for path in tqdm(args.path):
-        try:
-            path = Path(path)
-            if 'interleaved' in path.stem:
-                process_interleaved_file(path, args.reprocess)
-            elif 'simultaneous' in path.stem:
-                process_simultaneous_file(path, args.reprocess)
-        except Exception as e:
-            print(f'Error processing {path.name}')
-            print(f' {e}')
+    process_files(args.folder, '**/*memr_simultaneous*',
+                  process_simultaneous_file, reprocess=args.reprocess,
+                  halt_on_error=args.halt_on_error)
+
+
+def main_interleaved_folder():
+    import argparse
+    parser = argparse.ArgumentParser('Summarize interleaved MEMR data in folder')
+    add_default_options(parser)
+    args = parser.parse_args()
+    process_files(args.folder, '**/*memr_interleaved*',
+                  process_interleaved_file, reprocess=args.reprocess)
 
 
 if __name__ == '__main__':

@@ -48,7 +48,10 @@ class BaseMEMRFile(Recording):
     @property
     @lru_cache(maxsize=MAXSIZE)
     def memr_metadata(self):
-        data = self.__getattr__('memr_metadata')
+        try:
+            data = self.__getattr__('memr_metadata')
+        except AttributeError:
+            data = self.__getattr__('memr_probe_metadata')
         # We need to check what needs to be renamed since an update to the MEMR
         # paradigm now includes the renamed column names.
         rename = {k: v for k, v in RENAME.items() if v not in data}
@@ -114,33 +117,32 @@ class SimultaneousMEMRFile(BaseMEMRFile):
     def repeat_period(self):
         return 1 / self.get_setting('probe_rate')
 
-    @lru_cache(maxsize=MAXSIZE)
-    def get_repeats(self, columns='auto', signal_name='probe_microphone'):
+    def get_repeats(self, columns='auto', signal_name='probe_microphone',
+                    norm_window=None):
         repeats = super().get_repeats(columns, signal_name)
 
         probe_n = self.get_setting('probe_n')
         onset = self.get_setting('elicitor_onset')
         duration = self.get_setting('elicitor_duration')
         rise = self.get_setting('elicitor_noise_rise_time')
+        if norm_window is None:
+            norm_window = self.get_setting('norm_window')
 
+        def to_repeat(x):
+            return int(round(x / self.repeat_period))
 
-        def to_repeat(x, p): 
-            return int(round(x / p))
+        # Mark elicitor portions
+        e_start = to_repeat(onset + rise)
+        e_end = to_repeat(onset + duration - rise)
 
-        rp = self.repeat_period
-        e_start = to_repeat(onset, rp)
-        e_ss_start = to_repeat(onset + rise, rp)
-        e_ss_end = to_repeat(onset + duration - rise, rp)
-        e_end =  to_repeat(onset + duration, rp)
-
-        nw_start = to_repeat(onset - duration + rise * 2, rp)
-        nw_end = to_repeat(onset, rp)
+        # Norm window is just before the elicitor begins
+        nw_start = to_repeat(onset - norm_window)
+        nw_end = to_repeat(onset)
 
         # Create a mapping of repeat number to the probe type (e.g., baseline,
         # elicitor, recovery).
         probe_map = pd.Series('', index=range(probe_n))
         probe_map[e_start:e_end] = 'elicitor'
-        probe_map[e_ss_start:e_ss_end] = 'elicitor_ss'
         probe_map[nw_start:nw_end] = 'baseline'
         probe_map[e_end:] = 'recovery'
 
