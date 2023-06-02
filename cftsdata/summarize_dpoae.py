@@ -7,83 +7,25 @@ import pandas as pd
 
 from psiaudio import util
 
-from .dpoae import DPOAEFile
+from .dpoae import DPOAEFile, isodp_th_criterions
 from .util import add_default_options, DatasetManager, process_files
 
 
-def isodp_th(l2, dp, nf, criterion):
-    '''
-    Computes iso-DP threshold for a level sweep at a single frequency
-
-    Parameters
-    ----------
-    l2 : array-like
-        Requested F2 levels
-    dp : array-like
-        Measured DPOAE levels
-    nf : array-like
-        Measured DPOAE noise floor
-    criterion : float
-        Threshold criterion (e.g., value that the input-output function must
-        exceed)
-
-    Returns
-    -------
-    threshold : float
-        If no threshold is identified, NaN is returned
-    '''
-    # First, discard up to the first level where the DPOAE exceeds one standard
-    # deviation from the noisne floor
-    nf_crit = np.mean(nf) + np.std(nf)
-    i = np.flatnonzero(dp < nf_crit)
-    if len(i):
-        dp = dp[i[-1]:]
-        l2 = l2[i[-1]:]
-
-    # Now, loop through every pair of points until we find the first pair that
-    # brackets criterion (for non-Python programmers, this uses chained
-    # comparision operators and is not a bug)
-    for l_lb, l_ub, d_lb, d_ub in zip(l2[:-1], l2[1:], dp[:-1], dp[1:]):
-        if d_lb < criterion <= d_ub:
-            return np.interp(criterion, [d_lb, d_ub], [l_lb, l_ub])
-    return np.nan
-
-
-def isodp_th_criterions(df, criterions=None, debug=False):
-    '''
-    Helper function that takes dataframe containing a single frequency and
-    calculates threshold for each criterion.
-    '''
-    if criterions is None:
-        criterions = [-5, 0, 5, 10, 15, 20, 25]
-
-    if ':dB' in df.columns:
-        # This is used for thresholding data already in EPL CFTS format
-        l2 = df.loc[:, ':dB']
-        dp = df.loc[:, '2f1-f2(dB)']
-        nf = df.loc[:, '2f1-f2Nse(dB)']
-    else:
-        # This is used for thresholding data from the psi DPOAE IO.
-        if debug:
-            # Use a measurable signal to estimate threshold.
-            l2 = df.loc[:, 'secondary_tone_level'].values
-            dp = df.loc[:, 'f2_level'].values
-            nf = df.loc[:, 'dpoae_noise_floor'].values
-        else:
-            l2 = df.loc[:, 'secondary_tone_level'].values
-            dp = df.loc[:, 'dpoae_level'].values
-            nf = df.loc[:, 'dpoae_noise_floor'].values
-
-    th = [isodp_th(l2, dp, nf, c) for c in criterions]
-    index = pd.Index(criterions, name='criterion')
-    return pd.Series(th, index=index, name='threshold')
+expected_suffixes = [
+    'io.csv',
+    'th.csv',
+    'io.pdf',
+    'mic spectrum.pdf',
+    'th.pdf'
+]
 
 
 def process_file(filename, cb, reprocess=False):
     manager = DatasetManager(filename)
-    if not reprocess and manager.is_processed('io.csv'):
+    if not reprocess and manager.is_processed(expected_suffixes):
         return
-    manager.clear()
+    manager.clear(expected_suffixes)
+
     with manager.create_cb(cb) as cb:
         fh = DPOAEFile(filename)
         fs = fh.system_microphone.fs
@@ -163,8 +105,8 @@ def process_file(filename, cb, reprocess=False):
             index=pd.MultiIndex.from_tuples(measured.keys(), names=['f2', 'l2'])
         )
 
-        figure, axes = plt.subplots(2, n_freq, figsize=(4 * n_freq, 8),
-                                    sharex=True, sharey=True, squeeze=False)
+        io_figure, axes = plt.subplots(1, n_freq, figsize=(4 * n_freq, 4),
+                                       sharex=True, sharey=True, squeeze=False)
         for fi, f2 in enumerate(freq):
             col = axes[:, fi]
             m = measured.loc[f2]
@@ -176,25 +118,16 @@ def process_file(filename, cb, reprocess=False):
             ax.plot(m['dp_level'], marker='o', color='darkturquoise')
             ax.plot(m['dp_nf'], marker='x', color='lightblue')
             ax.set_title(f'{f2} Hz')
-            ax.grid()
-
-            ax = col[1]
-            ax.axhline(0, ls='-', color='k')
-            ax.plot(m['f2_level'], marker='o', color='0.5')
-            ax.plot(m['f1_level'], marker='o', color='k')
-            ax.plot(m['online_dp_level'], marker='o', color='darkorange')
-            ax.plot(m['online_dp_nf'], marker='x', color='coral')
-            ax.grid()
             ax.set_xlabel('F2 level (dB SPL)')
+            ax.grid()
 
         for ax in axes[:, 0]:
             ax.set_ylabel('Measured level (dB SPL)')
 
-        manager.save_fig(figure, 'io.pdf')
-
-        figure, axes = plt.subplots(n_level, n_freq,
-                                    figsize=(4 * n_freq, 4 * n_level),
-                                    sharex=True, sharey=True, squeeze=False)
+        mic_figure, axes = plt.subplots(n_level, n_freq,
+                                        figsize=(4 * n_freq, 4 * n_level),
+                                        sharex=True, sharey=True,
+                                        squeeze=False)
         for fi, f2 in enumerate(freq):
             for li, l2 in enumerate(level[::-1]):
                 ax = axes[li, fi]
@@ -219,8 +152,20 @@ def process_file(filename, cb, reprocess=False):
         for ax in axes[:, 0]:
             ax.set_xlabel('PSD (dB)')
 
-        manager.save_fig(figure, 'mic spectrum.pdf')
+        th = measured.groupby('f2').apply(isodp_th_criterions)
+        th_figure, ax = plt.subplots(1, 1, figsize=(4, 4))
+        for c, row in th.T.iterrows():
+            ax.plot(row, 'o-', label=str(c))
+        ax.set_xscale('octave', octaves=0.5)
+        ax.set_xlabel('$f_2$ frequency (kHz)')
+        ax.set_ylabel('IsoDP threshold (dB SPL)')
+        ax.legend()
+
         manager.save_dataframe(measured, 'io.csv')
+        manager.save_dataframe(th, 'th.csv')
+        manager.save_fig(mic_figure, 'mic spectrum.pdf')
+        manager.save_fig(io_figure, 'io.pdf')
+        manager.save_fig(th_figure, 'th.pdf')
         plt.close('all')
 
 
