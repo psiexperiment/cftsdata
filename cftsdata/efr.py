@@ -5,7 +5,7 @@ class EFR(Recording):
 
     def __init__(self, filename, setting_table='analyze_efr_metadata'):
         super().__init__(filename, setting_table)
-        self.efr_type = 'ram' if self.base_path.stem.endswith('ram') else 'sam'
+        self.efr_type = 'ram' if 'efr_ram' in self.base_path.stem else 'sam'
 
     def _get_epochs(self, signal):
         duration = self.get_setting('duration')
