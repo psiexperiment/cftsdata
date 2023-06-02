@@ -30,6 +30,9 @@ summarize-abr-file = "cftsdata.summarize_abr:main_file"
 summarize-abr-folder = "cftsdata.summarize_abr:main_folder"
 summarize-iec-folder = "cftsdata.summarize_iec:main_folder"
 summarize-dpoae-folder = "cftsdata.summarize_dpoae:main_folder"
+summarize-efr-folder = "cftsdata.summarize_efr:main_folder"
+summarize-interleaved-memr-folder = "cftsdata.summarize_memr:main_interleaved_folder"
+summarize-simultaneous-memr-folder = "cftsdata.summarize_memr:main_simultaneous_folder"
 
 [build-system]
 requires = ["setuptools>=61.2", "wheel", "setuptools_scm[toml]>=3.4.3"]
