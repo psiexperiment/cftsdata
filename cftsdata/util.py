@@ -2,12 +2,14 @@ import os
 from pathlib import Path
 
 from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.pyplot as plt
 
 
 class CallbackManager:
 
-    def __init__(self, cb):
+    def __init__(self, cb, autoclose_figures=True):
         self._cb = cb
+        self._autoclose_figures = autoclose_figures
 
     def __enter__(self):
         self._cb(0)
@@ -18,6 +20,8 @@ class CallbackManager:
 
     def __exit__(self, exc_type, exc_value, exc_tb):
         self._cb(1)
+        if self._autoclose_figures:
+            plt.close('all')
 
 
 def get_cb(cb, suffix=None):

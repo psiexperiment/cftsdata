@@ -37,6 +37,14 @@ class BaseMEMRFile(Recording):
         super().__init__(base_path, setting_table)
 
     @property
+    def probe_fs(self):
+        return self.probe_microphone.fs
+
+    @property
+    def elicitor_fs(self):
+        return self.elicitor_microphone.fs
+
+    @property
     def probe_microphone(self):
         # A refactor of the cfts suite resulted in microphone being renamed to
         # system_microphone.
@@ -59,17 +67,17 @@ class BaseMEMRFile(Recording):
 
     @lru_cache(maxsize=MAXSIZE)
     def get_epochs(self, columns='auto', signal_name='probe_microphone',
-                   add_trial=True):
+                   add_trial=True, cb=None):
         signal = getattr(self, signal_name)
         epochs = signal.get_epochs(
             self.memr_metadata, 0, self.trial_duration,
-            columns=columns).sort_index()
+            columns=columns, cb=cb).sort_index()
         if add_trial:
             epochs = util.add_trial(epochs, epochs.index.names[:-1])
         return epochs
 
     @lru_cache(maxsize=MAXSIZE)
-    def get_repeats(self, columns='auto', signal_name='probe_microphone'):
+    def _get_repeats(self, columns='auto', signal_name='probe_microphone'):
         fs = getattr(self, signal_name).fs
         epochs = self.get_epochs(columns, signal_name).copy()
         s_repeat = int(round(self.repeat_period * fs))
@@ -105,6 +113,33 @@ class InterleavedMEMRFile(BaseMEMRFile):
     @property
     def repeat_period(self):
         return self.get_setting('repeat_period')
+
+    @lru_cache(maxsize=MAXSIZE)
+    def get_elicitor(self, signal_name='elicitor_microphone'):
+        repeats = self._get_repeats(signal_name=signal_name)
+        elicitor_delay = self.get_setting('elicitor_envelope_start_time')
+        m = repeats.columns >= elicitor_delay
+        return repeats.loc[:, m].reset_index(['probe_t0', 't0'], drop=True)
+
+    @lru_cache(maxsize=MAXSIZE)
+    def get_probe(self, acoustic_delay=0.75e-3, signal_name='probe_microphone'):
+        repeats = self._get_repeats(signal_name=signal_name)
+        probe_delay = self.get_setting('probe_delay')
+        probe_duration = self.get_setting('probe_duration')
+        probe_lb = acoustic_delay + probe_delay
+        probe_ub = acoustic_delay + probe_delay + probe_duration
+        m = (repeats.columns >= probe_lb) & (repeats.columns < probe_ub)
+        return repeats.loc[:, m].reset_index(['probe_t0', 't0'], drop=True)
+
+    @lru_cache(maxsize=MAXSIZE)
+    def get_silence(self, acoustic_delay=0.75e-3, signal_name='probe_microphone'):
+        probe_delay = self.get_setting('probe_delay')
+        probe_duration = self.get_setting('probe_duration')
+        silence_lb = acoustic_delay + probe_delay + probe_duration
+        silence_ub = silence_lb + probe_duration
+        repeats = self._get_repeats(signal_name=signal_name)
+        m = (repeats.columns >= silence_lb) & (repeats.columns < silence_ub)
+        return repeats.loc[:, m].reset_index(['probe_t0', 't0'], drop=True)
 
 
 class SimultaneousMEMRFile(BaseMEMRFile):
