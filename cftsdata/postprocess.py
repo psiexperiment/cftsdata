@@ -17,6 +17,7 @@ def zip_data():
     parser.add_argument('-d', '--destination', type=Path)
     args = parser.parse_args()
 
+    # Make zip archives first
     dirs = [p for p in args.path.iterdir() if p.is_dir()]
     for path in tqdm(dirs):
         shutil.make_archive(str(path), 'zip', str(path))
@@ -26,12 +27,16 @@ def zip_data():
             md5path = zippath.with_suffix('.md5')
             md5path.write_text(zipmd5)
             shutil.rmtree(path)
-            if args.destination is not None:
-                for file in (zippath, md5path):
-                    new_file = args.destination / file.name
-                    file.rename(new_file)
         except IOError as e:
             print(e)
+
+    # Now, move all zip and md5 files if a destination is specified
+    if args.destination is not None:
+        for zippath in tqdm(args.path.glob('*.zip')):
+            md5path = zippath.with_suffix('.md5')
+            for file in (zippath, md5path):
+                new_file = args.destination / file.name
+                file.rename(new_file)
 
 
 def md5sum(stream, blocksize=1024**2):
