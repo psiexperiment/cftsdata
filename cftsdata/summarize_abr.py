@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from psiaudio.plot import waterfall_plot
+from psiaudio import util
 
 from . import abr
 
@@ -144,7 +145,8 @@ def process_file(filename, offset=-1e-3, duration=10e-3,
                  simple_filename=True, export_single_trial=False, cb=None,
                  file_template=None, target_fs=12.5e3, analysis_window=None,
                  latency_correction=0, gain_correction=1, debug_mode=False,
-                 plot_waveforms_cb=plot_waveforms_cb, reprocess=False):
+                 plot_waveforms_cb=plot_waveforms_cb, reprocess=False,
+                 eeg_duration=2.5):
     '''
     Extract ABR epochs, filter and save result to CSV files
 
@@ -199,6 +201,9 @@ def process_file(filename, offset=-1e-3, duration=10e-3,
     plot_waveforms_cb : {Callable, None}
         Callback that takes three arguments. Epoch mean dataframe, path to file
         to save figures in, and name of file.
+    eeg_duration : float
+        Duration, in seconds, of EEG to analyze for RMS and PSD (useful for
+        validating settings on amplifier).
     '''
     settings = locals()
     filename = Path(filename)
@@ -238,7 +243,10 @@ def process_file(filename, offset=-1e-3, duration=10e-3,
         'average waveforms.csv',
         'processing settings.json',
         'experiment settings.json',
-        'waveforms.pdf'
+        'waveforms.pdf',
+        'eeg spectrum.pdf',
+        'eeg spectrum.csv',
+        'eeg rms.json',
     ]
     if export_single_trial:
         files.append('individual waveforms.csv')
@@ -319,6 +327,28 @@ def process_file(filename, offset=-1e-3, duration=10e-3,
                 manager.get_proc_filename('waveforms.pdf'),
                 filename.stem
             )
+
+        # Get the first 2.5 minutes of the EEG. In general, even a
+        # single-frequency ABR at 40/s will be a little over three minutes
+        # long, so this should ensure we have a consistent duration baseline
+        # against which we can compare all datasets.
+        eeg = fh.eeg.get_segment(0, 0, eeg_duration*60, channel=0)
+        n_averages = int(60 * eeg_duration)
+        eeg_psd = util.db(util.psd_df(eeg, fs=fh.eeg.fs, waveform_averages=n_averages))
+
+        eeg_figure, axes = plt.subplots(1, 1, figsize=(4, 4))
+        axes.plot(eeg_psd.iloc[1:], 'k-')
+        axes.set_xscale('octave', octaves=2)
+        axes.axis(xmin=10, xmax=10e3)
+        axes.set_xlabel('Frequency (kHz)')
+        axes.set_ylabel('PSD (dB re 1V)')
+        axes.axvline(60, ls=':', color='k')
+        manager.save_fig(eeg_figure, 'eeg spectrum.pdf')
+        manager.save_dataframe(eeg_psd, 'eeg spectrum.csv')
+        manager.save_dict({
+            'eeg_rms': util.rms(eeg.values),
+            'eeg_n_averages': n_averages,
+        }, 'eeg rms.json')
 
         cb(1.0)
         plt.close('all')

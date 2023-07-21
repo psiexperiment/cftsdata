@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 
@@ -53,6 +54,7 @@ def add_default_options(parser):
 
 def process_files(folder, glob_pattern, fn, cb='tqdm', reprocess=False,
                   halt_on_error=False):
+    halt_on_error = True
     success = []
     errors = []
     for filename in Path(folder).glob(glob_pattern):
@@ -138,8 +140,13 @@ class DatasetManager:
             suffixes = [suffixes]
         for suffix in suffixes:
             if not self.get_proc_filename(suffix).exists():
+                print(f'... {suffix} missing')
                 return False
         return True
+
+    def save_dict(self, d, suffix):
+        filename = self.get_proc_filename(suffix)
+        filename.write_text(json.dumps(d))
 
     def save_fig(self, figure, suffix):
         filename = self.get_proc_filename(suffix)
