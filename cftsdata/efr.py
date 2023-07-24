@@ -11,13 +11,28 @@ class EFR(Recording):
         duration = self.get_setting('duration')
         offset = 0
         result = signal.get_epochs(self.analyze_efr_metadata, offset, duration)
-        print(result)
         if self.efr_type == 'sam':
-            to_drop = ['target_sam_tone_fc', 'target_sam_tone_fm']
-            return result.reset_index(to_drop, drop=True)
+            # Drop the requested fc and fm column. The actual fc and fm are
+            # stored in target_sam_tone_fc and target_sam_tone_fm (e.g., we may
+            # coerce the fc period to an integer divisor of the stimulus
+            # duration).
+            result = result.reset_index(['fc', 'fm'], drop=True)
+            rename = {
+                'target_sam_tone_fc': 'fc',
+                'target_sam_tone_fm': 'fm',
+            }
+            result.index.names = [rename.get(n, n) for n in result.index.names]
+            return result
         else:
-            to_drop = ['target_mod_fm', 'target_tone_frequency', 'target_mod_duty_cycle']
-        return result.reset_index(to_drop, drop=True)
+            # Note that duty cycle is also a computed parameter, so
+            # double-check this if needed.
+            result = result.reset_index(['fc', 'fm'], drop=True)
+            rename = {
+                'target_tone_frequency': 'fc',
+                'target_mod_fm': 'fm',
+            }
+            result.index.names = [rename.get(n, n) for n in result.index.names]
+            return result
 
     @property
     def mic(self):

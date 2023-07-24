@@ -31,6 +31,7 @@ summarize-abr-folder = "cftsdata.summarize_abr:main_folder"
 summarize-iec-folder = "cftsdata.summarize_iec:main_folder"
 summarize-dpoae-folder = "cftsdata.summarize_dpoae:main_folder"
 summarize-efr-folder = "cftsdata.summarize_efr:main_folder"
+summarize-efr-file = "cftsdata.summarize_efr:main_file"
 summarize-interleaved-memr-folder = "cftsdata.summarize_memr:main_interleaved_folder"
 summarize-simultaneous-memr-folder = "cftsdata.summarize_memr:main_simultaneous_folder"
 

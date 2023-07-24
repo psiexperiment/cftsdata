@@ -158,9 +158,9 @@ class DatasetManager:
             for figure in figures:
                 pdf.savefig(figure, bbox_inches='tight')
 
-    def save_dataframe(self, df, suffix):
+    def save_dataframe(self, df, suffix, **kw):
         filename = self.get_proc_filename(suffix)
-        df.to_csv(filename)
+        df.to_csv(filename, **kw)
 
     save_df = save_dataframe
 
