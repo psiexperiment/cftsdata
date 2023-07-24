@@ -344,7 +344,7 @@ def process_file(filename, offset=-1e-3, duration=10e-3,
         axes.set_ylabel('PSD (dB re 1V)')
         axes.axvline(60, ls=':', color='k')
         manager.save_fig(eeg_figure, 'eeg spectrum.pdf')
-        manager.save_dataframe(eeg_psd, 'eeg spectrum.csv')
+        manager.save_dataframe(eeg_psd.rename('psd'), 'eeg spectrum.csv')
         manager.save_dict({
             'eeg_rms': util.rms(eeg.values),
             'eeg_n_averages': n_averages,
