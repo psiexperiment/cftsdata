@@ -38,9 +38,11 @@ class Dataset:
         if subpath is not None:
             self.ephys_path = self.ephys_path / subpath
 
-    def _load(self, cb, glob, filename_parser):
+    def _load(self, cb, glob, filename_parser, data_path=None):
+        if data_path is None:
+            data_path = self.ephys_path
         result = []
-        for filename in self.ephys_path.glob(glob):
+        for filename in data_path.glob(glob):
             if '_exclude' in str(filename):
                 continue
             if '.imaris_cache' in str(filename):
@@ -51,6 +53,8 @@ class Dataset:
                     raise ValueError('Column will get overwritten')
                 data[k] = v
             result.append(data)
+        if len(result) == 0:
+            raise ValueError('No data found')
         if isinstance(data, pd.DataFrame):
             df = pd.concat(result)
         else:
