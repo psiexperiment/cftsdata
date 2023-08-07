@@ -54,7 +54,6 @@ def add_default_options(parser):
 
 def process_files(folder, glob_pattern, fn, cb='tqdm', reprocess=False,
                   halt_on_error=False):
-    halt_on_error = True
     success = []
     errors = []
     for filename in Path(folder).glob(glob_pattern):
