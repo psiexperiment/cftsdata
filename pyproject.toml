@@ -34,6 +34,8 @@ summarize-efr-folder = "cftsdata.summarize_efr:main_folder"
 summarize-efr-file = "cftsdata.summarize_efr:main_file"
 summarize-interleaved-memr-folder = "cftsdata.summarize_memr:main_interleaved_folder"
 summarize-simultaneous-memr-folder = "cftsdata.summarize_memr:main_simultaneous_folder"
+summarize-noise-exposure-folder = "cftsdata.summarize_noise_exposure:main_folder"
+summarize-noise-exposure-file = "cftsdata.summarize_noise_exposure:main_file"
 
 [build-system]
 requires = ["setuptools>=61.2", "wheel", "setuptools_scm[toml]>=3.4.3"]
