@@ -400,10 +400,10 @@ def main_file():
 def main_folder():
     parser = argparse.ArgumentParser('Filter and summarize ABR files in folder')
     add_default_options(parser)
-    args = parser.parse_args()
+    args = vars(parser.parse_args())
     fn = partial(process_file, filter_settings='saved', offset=-0.001,
                  duration=0.01)
-    process_files(args.folder, '**/*abr_io*', fn, reprocess=args.reprocess)
+    process_files(glob_pattern='**/*abr_io*', fn=fn, **args)
 
 
 def main_gui():
