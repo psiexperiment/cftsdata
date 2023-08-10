@@ -104,7 +104,7 @@ class ABRFile(Recording):
     def get_epochs(self, offset=0, duration=8.5e-3, detrend='constant',
                    downsample=None, reject_threshold=None,
                    reject_mode='absolute', columns='auto', averages=None,
-                   cb=None):
+                   cb=None, signal='eeg'):
         '''
         Extract event-related epochs from EEG
 
@@ -113,7 +113,7 @@ class ABRFile(Recording):
         {common_docstring}
         {epochs_docstring}
         '''
-        fn = self.eeg.get_epochs
+        fn = getattr(self, signal).get_epochs
         result = fn(self.erp_metadata, offset, duration, detrend,
                     downsample=downsample, columns=columns, cb=cb)
         result = self._apply_reject(result, reject_threshold, reject_mode)
