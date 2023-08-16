@@ -270,7 +270,6 @@ def main_folder_dpoae():
     parser = argparse.ArgumentParser('Summarize DPOAE IO data in folder')
     add_default_options(parser)
     args = vars(parser.parse_args())
-    print(args)
     process_files('**/*dpoae_io*', process_file_dpoae, **args)
 
 
