@@ -52,7 +52,7 @@ def add_default_options(parser):
     parser.add_argument('--halt-on-error', action='store_true', help='Stop on error?')
 
 
-def process_files(folder, glob_pattern, fn, cb='tqdm', reprocess=False,
+def process_files(glob_pattern, fn, folder, cb='tqdm', reprocess=False,
                   halt_on_error=False):
     success = []
     errors = []
@@ -71,6 +71,9 @@ def process_files(folder, glob_pattern, fn, cb='tqdm', reprocess=False,
                 raise
             errors.append((filename, e))
             print(f'Error processing {filename}')
+        finally:
+            plt.close('all')
+
     print(f'Successfully processed {len(success)} files with {len(errors)} errors')
 
 
@@ -139,7 +142,6 @@ class DatasetManager:
             suffixes = [suffixes]
         for suffix in suffixes:
             if not self.get_proc_filename(suffix).exists():
-                print(f'... {suffix} missing')
                 return False
         return True
 
