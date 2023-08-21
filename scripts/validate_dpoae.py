@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 
-from psi.data.io import dpoae
+from cftsdata import dpoae
 
 
 def main(filename):
