@@ -13,7 +13,7 @@ from psi import get_config
 def zip_data():
     import argparse
     parser = argparse.ArgumentParser('cfts-zip-data')
-    parser.add_argument('path', nargs='?', default=get_config('DATA_ROOT'), type=Path)
+    parser.add_argument('path', type=Path)
     parser.add_argument('-d', '--destination', type=Path)
     args = parser.parse_args()
 
