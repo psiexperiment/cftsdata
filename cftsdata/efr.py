@@ -20,6 +20,7 @@ class EFR(Recording):
             rename = {
                 'target_sam_tone_fc': 'fc',
                 'target_sam_tone_fm': 'fm',
+                'target_sam_tone_polarity': 'polarity',
             }
             result.index.names = [rename.get(n, n) for n in result.index.names]
             return result
@@ -30,6 +31,7 @@ class EFR(Recording):
             rename = {
                 'target_tone_frequency': 'fc',
                 'target_mod_fm': 'fm',
+                'target_tone_polarity': 'polarity',
             }
             result.index.names = [rename.get(n, n) for n in result.index.names]
             return result
