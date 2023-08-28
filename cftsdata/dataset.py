@@ -9,6 +9,15 @@ import pandas as pd
 from cftsdata.abr import load_abr_analysis
 
 
+class BadFilenameException(Exception):
+
+    def __init__(self, filename):
+        self.filename = filename
+
+    def __str__(self):
+        return f'Bad filename: {self.filename}'
+
+
 P_PSI_FILENAME = re.compile(
 	'^(?P<datetime>\d{8}-\d{6}) '
 	'(?P<experimenter>\w+) '
