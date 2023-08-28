@@ -5,6 +5,8 @@ from pathlib import Path
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as plt
 
+from psiaudio.util import get_cb
+
 
 class CallbackManager:
 
@@ -23,27 +25,6 @@ class CallbackManager:
         self._cb(1)
         if self._autoclose_figures:
             plt.close('all')
-
-
-def get_cb(cb, suffix=None):
-    # Define the callback as a no-op if not provided or sets up tqdm if requested.
-    if cb is None:
-        cb = lambda x: x
-    elif cb == 'tqdm':
-        from tqdm import tqdm
-        mesg = '{l_bar}{bar}[{elapsed}<{remaining}]'
-        if suffix is not None:
-            mesg = mesg + ' ' + suffix
-        pbar = tqdm(total=100, bar_format=mesg)
-        def cb(frac):
-            nonlocal pbar
-            frac *= 100
-            pbar.update(frac - pbar.n)
-            if frac == 100:
-                pbar.close()
-    else:
-        raise ValueError(f'Unsupported callback: {cb}')
-    return cb
 
 
 def add_default_options(parser):
