@@ -1,4 +1,9 @@
+from functools import lru_cache
+
 from psidata.api import Recording
+
+
+MAXSIZE = 1024
 
 
 class EFR(Recording):
@@ -7,44 +12,41 @@ class EFR(Recording):
         super().__init__(filename, setting_table)
         self.efr_type = 'ram' if 'efr_ram' in self.base_path.stem else 'sam'
 
-    def _get_epochs(self, signal):
+    @property
+    @lru_cache(maxsize=MAXSIZE)
+    def analyze_efr_metadata(self):
+        '''
+        EFR metadata in DataFrame format
+
+        There will be one row for each epoch and one column for each parameter
+        from the EFR experiment. For simplicity, some parameters have been
+        renamed so that we have `fc`, `fm` and `polarity`.
+        '''
+        data = self.__getattr__('analyze_efr_metadata')
+        drop = [c for c in ('fc', 'fm') if c in data]
+        return data.drop(columns=drop) \
+            .rename(columns={
+            'target_sam_tone_fc': 'fc',
+            'target_sam_tone_fm': 'fm',
+            'target_sam_tone_polarity': 'polarity',
+            'target_tone_frequency': 'fc',
+            'target_mod_fm': 'fm',
+            'target_tone_polarity': 'polarity',
+        })
+
+    def _get_epochs(self, signal, columns='auto'):
         duration = self.get_setting('duration')
-        offset = 0
-        result = signal.get_epochs(self.analyze_efr_metadata, offset, duration)
-        if self.efr_type == 'sam':
-            # Drop the requested fc and fm column. The actual fc and fm are
-            # stored in target_sam_tone_fc and target_sam_tone_fm (e.g., we may
-            # coerce the fc period to an integer divisor of the stimulus
-            # duration).
-            result = result.reset_index(['fc', 'fm'], drop=True)
-            rename = {
-                'target_sam_tone_fc': 'fc',
-                'target_sam_tone_fm': 'fm',
-                'target_sam_tone_polarity': 'polarity',
-            }
-            result.index.names = [rename.get(n, n) for n in result.index.names]
-            return result
-        else:
-            # Note that duty cycle is also a computed parameter, so
-            # double-check this if needed.
-            result = result.reset_index(['fc', 'fm'], drop=True)
-            rename = {
-                'target_tone_frequency': 'fc',
-                'target_mod_fm': 'fm',
-                'target_tone_polarity': 'polarity',
-            }
-            result.index.names = [rename.get(n, n) for n in result.index.names]
-            return result
+        return signal.get_epochs(self.analyze_efr_metadata, 0, duration, columns=columns)
 
     @property
     def mic(self):
         return self.system_microphone
 
-    def get_eeg_epochs(self):
-        return self._get_epochs(self.eeg)
+    def get_eeg_epochs(self, columns='auto'):
+        return self._get_epochs(self.eeg, columns=columns)
 
-    def get_mic_epochs(self):
-        return self._get_epochs(self.mic)
+    def get_mic_epochs(self, columns='auto'):
+        return self._get_epochs(self.mic, columns=columns)
 
     @property
     def level(self):
