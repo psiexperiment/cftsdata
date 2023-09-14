@@ -1,16 +1,48 @@
 import hashlib
+import json
 import shutil
 import os
 from pathlib import Path
+import shutil
 import sys
+import tempfile
 import zipfile
 
 from tqdm import tqdm
 
-from psi import get_config
+import psidata.version
+import cftsdata.version
+
+from .dataset import Dataset
+
+def archive_data(path):
+    '''
+    Creates a zip archive of the specified path, validates the MD5sum of each
+    file in the archive, and then generates an MD5sum sidecar containing the
+    MD5sum of the zip file itself.
+    '''
+    path = Path(path)
+    shutil.make_archive(str(path), 'zip', str(path))
+    try:
+        zippath = validate(path)
+        zipmd5 = md5sum(zippath.open('rb'))
+        md5path = zippath.with_suffix('.md5')
+        md5path.write_text(zipmd5)
+        shutil.rmtree(path)
+    except IOError as e:
+        print(e)
 
 
 def zip_data():
+    '''
+    Main function for creating zipfiles from raw CFTS data
+
+    For each CFTS experiment, compress into a single zipfile that is supported
+    by `psidata.Recording`. Calculate MD5sum of zipfile and save alongside the
+    zipfile. The MD5sum can be safely discarded once the zipfile has been
+    transferred to a filesystem that uses checksums for integrity checks such
+    as BTRFS or ZFS.
+    '''
     import argparse
     parser = argparse.ArgumentParser('cfts-zip-data')
     parser.add_argument('path', type=Path)
@@ -20,15 +52,7 @@ def zip_data():
     # Make zip archives first
     dirs = [p for p in args.path.iterdir() if p.is_dir()]
     for path in tqdm(dirs):
-        shutil.make_archive(str(path), 'zip', str(path))
-        try:
-            zippath = validate(path)
-            zipmd5 = md5sum(zippath.open('rb'))
-            md5path = zippath.with_suffix('.md5')
-            md5path.write_text(zipmd5)
-            shutil.rmtree(path)
-        except IOError as e:
-            print(e)
+        archive_data(path)
 
     # Now, move all zip and md5 files if a destination is specified
     if args.destination is not None:
@@ -89,3 +113,103 @@ def validate(path):
             if archive_md5 != file_md5:
                 raise IOError('{name} in zipfile for {path} is corrupted')
     return zippath
+
+
+def zip_unrated_abr_data():
+    '''
+    Create a zipfile of processed ABR data that needs to be reviewed
+
+    The generated zipfile only includes the subset of data needed to
+    successfully run the ABR peak-picking program.
+    '''
+    import argparse
+    parser = argparse.ArgumentParser('cfts-zip-unrated-abr-data')
+    parser.add_argument('-p', '--path', type=Path)
+    parser.add_argument('-s', '--subpath', type=str)
+    parser.add_argument('rater', type=str)
+    parser.add_argument('output', type=Path)
+    args = parser.parse_args()
+    dataset = Dataset(ephys_path=args.path, subpath=args.subpath)
+
+    freqs = dataset.load_abr_frequencies(include_dataset=True)
+    th = dataset.load_abr_th(args.rater, include_dataset=True)
+    all_datasets = set((r['dataset'], r['frequency']) for _, r in freqs.iterrows())
+    rated_datasets = set((r['dataset'], r['frequency']) for _, r in th.iterrows())
+    unrated_datasets = all_datasets - rated_datasets
+    unrated_folders = set(ds[0] for ds in unrated_datasets)
+    _zip_abr_folders(unrated_folders, args.output, dataset.ephys_path, args.rater)
+
+
+def _zip_abr_folders(folders, output, relative_path, rater=''):
+    with zipfile.ZipFile(output, 'w') as fh:
+        for folder in folders:
+            glob_patterns = [
+                f'*{rater}-analyzed.txt',
+                '*average waveforms.csv',
+                '*ABR processing settings.json',
+            ]
+            for pattern in glob_patterns:
+                for filename in folder.glob(pattern):
+                    fh.write(filename, str(filename.relative_to(relative_path)))
+
+
+def zip_multirater_abr_data():
+    '''
+    Create a zipfile of processed ABR data scored by more than one rater.
+
+    The generated zipfile is used for comparing raters.
+    '''
+    import argparse
+    parser = argparse.ArgumentParser('cfts-zip-multirater-abr-data')
+    parser.add_argument('-p', '--path', type=Path)
+    parser.add_argument('-s', '--subpath', type=str)
+    parser.add_argument('output', type=Path)
+    args = parser.parse_args()
+    dataset = Dataset(ephys_path=args.path, subpath=args.subpath)
+
+    th = dataset.load_abr_th(include_dataset=True)
+    n_raters = th.groupby(['dataset', 'frequency'])['rater'].nunique()
+    multiple_raters = n_raters[n_raters > 1]
+    datasets = multiple_raters.index.unique('dataset')
+    _zip_abr_folders(datasets, args.output, dataset.ephys_path)
+
+
+def invert_eeg_data():
+    '''
+    Fix EEG data (e.g., from EFR and ABR experiments) where the pinna and
+    vertex electrodes were switched.
+    '''
+    import argparse
+    import zarr
+    parser = argparse.ArgumentParser('cfts-invert-eeg-data')
+    parser.add_argument('path', type=Path)
+    args = parser.parse_args()
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        archive_path = Path(tempdir) / args.path.stem
+        if args.path.suffix != '.zip':
+            # TOOD: Add support for this when needed
+            raise ValueError('Currently this only works with zip files')
+        else:
+            with zipfile.ZipFile(args.path, 'r') as zip_fh:
+                zip_fh.extractall(archive_path)
+                zarr_path = archive_path / 'eeg.zarr'
+                old_zarr_path = archive_path / 'eeg-backup.zarr'
+                zarr_path.rename(old_zarr_path)
+
+                old_array = zarr.open(old_zarr_path)
+                new_array = zarr.array(-old_array[:], store=zarr_path)
+                for k, v in old_array.attrs.items():
+                    new_array.attrs[k] = v
+                flag_file = archive_path / 'eeg-corrections.json'
+                detail = {
+                    'note': 'Corrected for inverted polarity by cftsdata.postprocess.invert_eeg_data',
+                    'versions': {
+                        'cftsdata': cftsdata.version.__version__,
+                        'psidata': psidata.version.__version__,
+                    }
+                }
+                flag_file.write_text(json.dumps(detail, indent=4))
+                archive_data(archive_path)
+                zip_archive_path = archive_path.with_suffix('.zip')
+                shutil.copyfile(zip_archive_path, args.path)

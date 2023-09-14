@@ -46,8 +46,10 @@ class Dataset:
         self.ephys_path = Path(ephys_path)
         if subpath is not None:
             self.ephys_path = self.ephys_path / subpath
+        if not self.ephys_path.exists():
+            raise ValueError(f'Unknown data path {self.ephys_path}')
 
-    def _load(self, cb, glob, filename_parser, data_path=None):
+    def _load(self, cb, glob, filename_parser, data_path=None, include_dataset=False):
         if data_path is None:
             data_path = self.ephys_path
         result = []
@@ -61,6 +63,8 @@ class Dataset:
                 if k in data:
                     raise ValueError('Column will get overwritten')
                 data[k] = v
+            if include_dataset:
+                data['dataset'] = filename.parent
             result.append(data)
         if len(result) == 0:
             raise ValueError('No data found')
@@ -85,7 +89,7 @@ class Dataset:
                           '**/*dpoae_io th.csv',
                           parse_psi_filename)
 
-    def load_abr_io(self):
+    def load_abr_io(self, **kwargs):
         def _load_abr_io(x):
             freq, th, rater, peaks = load_abr_analysis(x)
             peaks = peaks.reset_index()
@@ -93,25 +97,46 @@ class Dataset:
             peaks['rater'] = rater
             return peaks
         abr_io = self._load(_load_abr_io,
-                               '**/*analyzed.txt',
-                               parse_psi_filename)
+                            '**/*analyzed.txt',
+                            parse_psi_filename,
+                            **kwargs)
         abr_io['w1'] = abr_io.eval('p1_amplitude - n1_amplitude')
         return abr_io
 
-    def load_abr_th(self):
+    def load_abr_th(self, rater=None, **kwargs):
         def _load_abr_th(x):
             freq, th, rater, _ = load_abr_analysis(x)
             return pd.Series({'frequency': freq, 'threshold': th, 'rater': rater})
+        glob = '**/*-analyzed.txt' if rater is None else f'**/*-{rater}-analyzed.txt'
         return self._load(_load_abr_th,
-                          '**/*analyzed.txt',
-                          parse_psi_filename)
+                          glob,
+                          parse_psi_filename,
+                          **kwargs)
 
-    def load_abr_settings(self):
+    def load_abr_settings(self, **kwargs):
         def _load_abr_settings(x):
             return pd.Series(json.loads(x.read_text()))
         return self._load(_load_abr_settings,
                           '**/*ABR experiment settings.json',
-                          parse_psi_filename)
+                          parse_psi_filename,
+                          **kwargs)
+
+    def load_abr_frequencies(self, **kwargs):
+        def _load_abr_frequencies(x):
+            with x.open() as fh:
+                frequencies = set(float(v) for v in fh.readline().split(',')[1:])
+                return pd.Series({'frequencies': sorted(frequencies)})
+        ds = self._load(_load_abr_frequencies,
+                        '**/*ABR average waveforms.csv',
+                        parse_psi_filename, **kwargs)
+        result = []
+        for _, row in ds.iterrows():
+            for frequency in row['frequencies']:
+                new_row = row.copy()
+                del new_row['frequencies']
+                new_row['frequency'] = frequency
+                result.append(new_row)
+        return pd.DataFrame(result)
 
     def load_abr_eeg_spectrum(self):
         def _load_abr_eeg_spectrum(x):

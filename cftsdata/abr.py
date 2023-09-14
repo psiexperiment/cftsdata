@@ -336,9 +336,9 @@ def is_abr_experiment(base_path, allow_superset=False):
 
 P_TH = re.compile('Threshold \(dB SPL\): ([\w.-]+)')
 P_FREQ = re.compile('Frequency \(kHz\): ([\d.]+)')
-P_RATER = re.compile(r'.*[\d.]+kHz-(?:(\w+)-)?analyzed.txt')
+P_FILENAME = re.compile(r'.*-(\d+\.\d+)+kHz-(?:(\w+)-)?analyzed.txt')
 
-def load_abr_analysis(filename):
+def load_abr_analysis(filename, freq_from_filename=True):
     '''
     Load ABR analysis from file
 
@@ -346,6 +346,10 @@ def load_abr_analysis(filename):
     ----------
     filename : {str, pathlib.Path}
         Name of file to load.
+    freq_from_filename : bool
+        If True, load frequency from filename. The frequency stored in the
+        header of the file rounded to the nearest 10 Hz, but the frequency in
+        the filename is not.
 
     Returns
     -------
@@ -413,9 +417,11 @@ def load_abr_analysis(filename):
         .sort_index()
 
     try:
-        rater = P_RATER.match(filename.name).group(1)
+        filename_freq, rater = P_FILENAME.match(filename.name).groups()
+        if freq_from_filename:
+            freq = float(filename_freq) * 1e3
     except AttributeError:
-        raise ValueError(f'Could not parser rater from {filename.name}')
+        raise ValueError(f'Could not parser rater and frequency from {filename.name}')
 
     return freq, th, rater, data
 
