@@ -3,7 +3,9 @@ import json
 import re
 import os
 from pathlib import Path
+import zipfile
 
+from jsonpath_ng import parse
 import pandas as pd
 
 from cftsdata.abr import load_abr_analysis
@@ -40,18 +42,45 @@ def parse_psi_filename(filename):
 
 class Dataset:
 
-    def __init__(self, ephys_path=None, subpath=None):
+    def __init__(self, ephys_path=None, subpath=None, raw_ephys_path=None):
         if ephys_path is None:
             ephys_path = os.environ['PROC_DATA_DIR']
+        if raw_ephys_path is None:
+            raw_ephys_path = os.environ['RAW_DATA_DIR']
+
         self.ephys_path = Path(ephys_path)
+        self.raw_ephys_path = Path(raw_ephys_path)
         if subpath is not None:
             self.ephys_path = self.ephys_path / subpath
+            self.raw_ephys_path = self.raw_ephys_path / subpath
         if not self.ephys_path.exists():
             raise ValueError(f'Unknown data path {self.ephys_path}')
 
-    def _load(self, cb, glob, filename_parser, data_path=None, include_dataset=False):
+    def load_raw(self, cb, etype=None):
+        wildcard = '**/*.zip' if etype is None else f'**/*{etype}*.zip'
+        return self.load(cb, wildcard, data_path=self.raw_ephys_path)
+
+    def load_raw_json(self, filename, json_path, etype=None):
+        '''
+        Load value from JSON file saved to raw data
+        '''
+        expr = parse(json_path)
+        def cb(zip_filename):
+            nonlocal expr
+            nonlocal filename
+            with zipfile.ZipFile(zip_filename) as fh_zip:
+                with fh_zip.open(filename) as fh:
+                    result = expr.find(json.load(fh))
+                    if len(result) > 1:
+                        raise ValueError(f'More than one match found for path "{json_path}"')
+                    return {str(result[0].full_path): result[0].value}
+        return self.load_raw(cb, etype)
+
+    def load(self, cb, glob, filename_parser=None, data_path=None, include_dataset=False):
         if data_path is None:
             data_path = self.ephys_path
+        if filename_parser is None:
+            filename_parser = parse_psi_filename
         result = []
         for filename in data_path.glob(glob):
             if '_exclude' in str(filename):
@@ -75,7 +104,7 @@ class Dataset:
         return df
 
     def load_dpoae_io(self):
-        return self._load(lambda x: pd.read_csv(x),
+        return self.load(lambda x: pd.read_csv(x),
                           '**/*dpoae_io io.csv',
                           parse_psi_filename)
 
@@ -85,7 +114,7 @@ class Dataset:
             df.columns = df.columns.astype('f')
             df.columns.name = 'criterion'
             return df.stack().rename('threshold').reset_index()
-        return self._load(_load_dpoae_th,
+        return self.load(_load_dpoae_th,
                           '**/*dpoae_io th.csv',
                           parse_psi_filename)
 
@@ -96,7 +125,7 @@ class Dataset:
             peaks['frequency'] = freq
             peaks['rater'] = rater
             return peaks
-        abr_io = self._load(_load_abr_io,
+        abr_io = self.load(_load_abr_io,
                             '**/*analyzed.txt',
                             parse_psi_filename,
                             **kwargs)
@@ -108,7 +137,7 @@ class Dataset:
             freq, th, rater, _ = load_abr_analysis(x)
             return pd.Series({'frequency': freq, 'threshold': th, 'rater': rater})
         glob = '**/*-analyzed.txt' if rater is None else f'**/*-{rater}-analyzed.txt'
-        return self._load(_load_abr_th,
+        return self.load(_load_abr_th,
                           glob,
                           parse_psi_filename,
                           **kwargs)
@@ -116,7 +145,7 @@ class Dataset:
     def load_abr_settings(self, **kwargs):
         def _load_abr_settings(x):
             return pd.Series(json.loads(x.read_text()))
-        return self._load(_load_abr_settings,
+        return self.load(_load_abr_settings,
                           '**/*ABR experiment settings.json',
                           parse_psi_filename,
                           **kwargs)
@@ -126,7 +155,7 @@ class Dataset:
             with x.open() as fh:
                 frequencies = set(float(v) for v in fh.readline().split(',')[1:])
                 return pd.Series({'frequencies': sorted(frequencies)})
-        ds = self._load(_load_abr_frequencies,
+        ds = self.load(_load_abr_frequencies,
                         '**/*ABR average waveforms.csv',
                         parse_psi_filename, **kwargs)
         result = []
@@ -143,13 +172,13 @@ class Dataset:
             df = pd.read_csv(x, index_col=0)
             df.columns = ['psd']
             return df
-        return self._load(_load_abr_eeg_spectrum,
+        return self.load(_load_abr_eeg_spectrum,
                           '**/*ABR eeg spectrum.csv',
                           parse_psi_filename)
 
     def load_abr_eeg_rms(self):
         def _load_abr_eeg_rms(x):
             return pd.Series(json.loads(x.read_text()))
-        return self._load(_load_abr_eeg_rms,
+        return self.load(_load_abr_eeg_rms,
                           '**/*ABR eeg rms.json',
                           parse_psi_filename)
