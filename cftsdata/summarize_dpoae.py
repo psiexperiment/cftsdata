@@ -108,7 +108,8 @@ def _process_file(fh, cb):
 def process_file_dpoae(filename, cb, reprocess=False):
     manager = DatasetManager(filename)
     if not reprocess and manager.is_processed(dpoae_expected_suffixes):
-        return
+        return False
+
     manager.clear(dpoae_expected_suffixes)
 
     with manager.create_cb(cb) as cb:
@@ -182,6 +183,8 @@ def process_file_dpoae(filename, cb, reprocess=False):
         manager.save_fig(io_figure, 'io.pdf')
         manager.save_fig(th_figure, 'th.pdf')
         plt.close('all')
+
+    return True
 
 
 def process_file_dpgram(filename, cb, reprocess=False):

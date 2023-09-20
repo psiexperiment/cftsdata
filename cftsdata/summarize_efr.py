@@ -44,7 +44,7 @@ def process_file(filename, cb='tqdm', reprocess=False, segment_duration=0.5,
     '''
     manager = DatasetManager(filename)
     if not reprocess and manager.is_processed(expected_suffixes):
-        return
+        return False
 
     with manager.create_cb(cb) as cb:
         fh = EFR(filename)
@@ -83,7 +83,7 @@ def process_file(filename, cb='tqdm', reprocess=False, segment_duration=0.5,
 
         spectrum_figures = []
         n = len(eeg_grouped)
-        for i, ((fm, fc), eeg) in enumerate(eeg_grouped):
+        for i, ((fm, fc), eeg_df) in enumerate(eeg_grouped):
             figure, axes = plt.subplots(3, 2, sharex=False, figsize=(12, 18),
                                         layout='constrained')
 
@@ -98,7 +98,7 @@ def process_file(filename, cb='tqdm', reprocess=False, segment_duration=0.5,
             # Remove extra frequencies (i.e., DC and negative frequencies) and
             # then calculate total level.
             level_freqs = fc + fm * level_harmonics
-            level_freqs = level_freqs[level_freqs > 0]
+            level_freqs = level_freqs[(level_freqs > 0) & (level_freqs <= mic_spl.index.max())]
             levels = mic_spl[level_freqs]
             total_level = 10 * np.log10(np.sum(10**(levels / 10)))
             levels = levels.to_dict()
@@ -108,8 +108,8 @@ def process_file(filename, cb='tqdm', reprocess=False, segment_duration=0.5,
             axes[0, 0].axhline(total_level, color='salmon', label='Measured level')
 
             # Plot the EEG PSD
-            n = len(eeg) * n_segments
-            eeg = eeg.values.reshape((n, -1))
+            n = len(eeg_df) * n_segments
+            eeg = eeg_df.values.reshape((n, -1))
             eeg_psd = util.db(util.psd_df(eeg, fs=actual_fs, window='hann').mean(axis=0))
             axes[0, 1].plot(eeg_psd, color='k')
 
@@ -147,8 +147,10 @@ def process_file(filename, cb='tqdm', reprocess=False, segment_duration=0.5,
             f_ub = fm * efr_harmonics * 1.2
             b, a = signal.iirfilter(2, (f_lb, f_ub), btype='band',
                                     ftype='butter', fs=actual_fs)
+
             eeg_filt = signal.filtfilt(b, a, eeg, axis=-1).mean(axis=0)
-            axes[2, 0].plot(eeg_dec.columns * 1e3, eeg_filt)
+            t = np.arange(len(eeg_filt)) / actual_fs
+            axes[2, 0].plot(t * 1e3, eeg_filt)
             axes[2, 0].axis(xmin=10/fm * 1e3, xmax=20/fm * 1e3)
             axes[2, 0].set_title(f'Raw waveform\nFiltered from {f_lb*1e-3:.1f} to {f_ub*1e-3:.1f} kHz')
             axes[2, 0].set_xscale('linear')
@@ -251,6 +253,8 @@ def process_file(filename, cb='tqdm', reprocess=False, segment_duration=0.5,
         manager.save_fig(efr_figure, 'EFR.pdf')
         manager.save_figs(spectrum_figures, 'spectrum.pdf')
 
+    return True
+
 
 def main_file():
     import argparse
@@ -266,5 +270,5 @@ def main_folder():
     parser = argparse.ArgumentParser('Summarize EFR in folder')
     add_default_options(parser)
     args = vars(parser.parse_args())
-    process_files(glob_pattern='**/*efr_ram_epoch*', fn=process_file, **args)
-    process_files(glob_pattern='**/*efr_sam_epoch*', fn=process_file, **args)
+    process_files(glob_pattern='**/*efr_ram*', fn=process_file, **args)
+    process_files(glob_pattern='**/*efr_sam*', fn=process_file, **args)

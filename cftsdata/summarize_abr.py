@@ -252,7 +252,7 @@ def process_file(filename, offset=-1e-3, duration=10e-3,
         files.append('individual waveforms.csv')
 
     if not reprocess and manager.is_processed(files):
-        return
+        return False
 
     # Load the epochs. The callbacks for loading the epochs return a value in
     # the range 0 ... 1. Since this only represents "half" the total work we
@@ -352,6 +352,8 @@ def process_file(filename, offset=-1e-3, duration=10e-3,
 
         cb(1.0)
         plt.close('all')
+
+    return True
 
 
 def main_file():

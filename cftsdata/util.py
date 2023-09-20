@@ -35,14 +35,17 @@ def add_default_options(parser):
 
 def process_files(glob_pattern, fn, folder, cb='tqdm', reprocess=False,
                   halt_on_error=False):
-    success = []
+    processed = []
+    skipped = []
     errors = []
     for filename in Path(folder).glob(glob_pattern):
         if filename.suffix == '.md5':
             continue
         try:
-            fn(filename, cb=cb, reprocess=reprocess)
-            success.append(filename)
+            if fn(filename, cb=cb, reprocess=reprocess):
+                processed.append(filename)
+            else:
+                skipped.append(filename)
         except KeyboardInterrupt:
             # Don't capture this otherwise it just keeps continuing with the
             # next file.
@@ -55,7 +58,7 @@ def process_files(glob_pattern, fn, folder, cb='tqdm', reprocess=False,
         finally:
             plt.close('all')
 
-    print(f'Successfully processed {len(success)} files with {len(errors)} errors')
+    print(f'Processed {len(processed)} files with {len(errors)} errors. {len(skipped)} files were skipped.')
 
 
 def add_trial(df, grouping):
@@ -123,6 +126,7 @@ class DatasetManager:
             suffixes = [suffixes]
         for suffix in suffixes:
             if not self.get_proc_filename(suffix).exists():
+                print(f'{suffix} is missing')
                 return False
         return True
 
