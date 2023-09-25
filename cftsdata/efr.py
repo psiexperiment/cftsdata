@@ -24,7 +24,7 @@ class EFR(Recording):
         '''
         data = self.__getattr__('analyze_efr_metadata')
         drop = [c for c in ('fc', 'fm') if c in data]
-        return data.drop(columns=drop) \
+        result = data.drop(columns=drop) \
             .rename(columns={
             'target_sam_tone_fc': 'fc',
             'target_sam_tone_fm': 'fm',
@@ -33,6 +33,13 @@ class EFR(Recording):
             'target_mod_fm': 'fm',
             'target_tone_polarity': 'polarity',
         })
+
+        # In some of the earliest experiments, polarity was not included in the
+        # analyze_efr_metadata file.
+        if 'polarity' not in result:
+            result['polarity'] = 1
+
+        return result
 
     def _get_epochs(self, signal, columns='auto'):
         duration = self.get_setting('duration')

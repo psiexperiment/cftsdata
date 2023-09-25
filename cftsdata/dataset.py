@@ -24,8 +24,8 @@ P_PSI_FILENAME = re.compile(
 	'^(?P<datetime>\d{8}-\d{6}) '
 	'(?P<experimenter>\w+) '
 	'(?P<animal_id>B?\d+-(\d+|C)) '
-	'(?P<ear>left|right) (?P<note>.*) '
-	'(?P<experiment_type>(?:abr|dpoae|efr|memr)_\w+).*$'
+	'((?P<ear>left|right) )?(?P<note>.*) '
+	'(?P<experiment_type>(?:abr|dpoae|efr|memr|inear|dpgram|dual_dpoae)(_\w+)?).*$'
 )
 
 
@@ -38,6 +38,19 @@ def parse_psi_filename(filename):
         return groups
     except AttributeError:
         raise ValueError(f'Could not parse {filename.stem}')
+
+
+def load_efr_level(filename, which='total'):
+    result = pd.read_csv(filename, index_col=['fm', 'fc', 'frequency']) \
+        ['level (dB SPL)'].rename('level').reset_index()
+    if which == 'total':
+        result = result.query('frequency == "total"').drop(columns=['frequency'])
+    elif which == 'harmonics':
+        result = result.query('frequency != "total"')
+        result['frequency'] = result['frequency'].astype('f')
+    else:
+        raise ValueError(f'Unrecognized parameter for which: "{which}"')
+    return result
 
 
 class Dataset:
@@ -56,9 +69,13 @@ class Dataset:
         if not self.ephys_path.exists():
             raise ValueError(f'Unknown data path {self.ephys_path}')
 
-    def load_raw(self, cb, etype=None):
+    def load_raw(self, cb, etype=None, **kwargs):
         wildcard = '**/*.zip' if etype is None else f'**/*{etype}*.zip'
-        return self.load(cb, wildcard, data_path=self.raw_ephys_path)
+        return self.load(cb, wildcard, data_path=self.raw_ephys_path, **kwargs)
+
+    def load_experiment_info(self, **kwargs):
+        return self.load_raw(lambda x: {}, filename_parser=parse_psi_filename,
+                             **kwargs)
 
     def load_raw_json(self, filename, json_path, etype=None):
         '''
@@ -103,12 +120,12 @@ class Dataset:
             df = pd.DataFrame(result)
         return df
 
-    def load_dpoae_io(self):
+    def load_dpoae_io(self, **kwargs):
         return self.load(lambda x: pd.read_csv(x),
                           '**/*dpoae_io io.csv',
-                          parse_psi_filename)
+                          parse_psi_filename, **kwargs)
 
-    def load_dpoae_th(self):
+    def load_dpoae_th(self, **kwargs):
         def _load_dpoae_th(x):
             df = pd.read_csv(x, index_col=0)
             df.columns = df.columns.astype('f')
@@ -116,7 +133,7 @@ class Dataset:
             return df.stack().rename('threshold').reset_index()
         return self.load(_load_dpoae_th,
                           '**/*dpoae_io th.csv',
-                          parse_psi_filename)
+                          parse_psi_filename, **kwargs)
 
     def load_abr_io(self, **kwargs):
         def _load_abr_io(x):
@@ -151,6 +168,14 @@ class Dataset:
                           **kwargs)
 
     def load_abr_frequencies(self, **kwargs):
+        '''
+        Loads ABR frequencies
+
+        Returns
+        -------
+        frequencies : pd.DataFrame
+            Dataframe with one row per frequency.
+        '''
         def _load_abr_frequencies(x):
             with x.open() as fh:
                 frequencies = set(float(v) for v in fh.readline().split(',')[1:])
@@ -167,18 +192,44 @@ class Dataset:
                 result.append(new_row)
         return pd.DataFrame(result)
 
-    def load_abr_eeg_spectrum(self):
+    def load_abr_eeg_spectrum(self, **kwargs):
         def _load_abr_eeg_spectrum(x):
             df = pd.read_csv(x, index_col=0)
             df.columns = ['psd']
             return df
         return self.load(_load_abr_eeg_spectrum,
                           '**/*ABR eeg spectrum.csv',
-                          parse_psi_filename)
+                          parse_psi_filename, **kwargs)
 
-    def load_abr_eeg_rms(self):
+    def load_abr_eeg_rms(self, **kwargs):
         def _load_abr_eeg_rms(x):
             return pd.Series(json.loads(x.read_text()))
         return self.load(_load_abr_eeg_rms,
                           '**/*ABR eeg rms.json',
-                          parse_psi_filename)
+                          parse_psi_filename, **kwargs)
+
+    def load_efr_sam_linear(self, **kwargs):
+        def _load_efr_sam_linear(x):
+            return pd.read_csv(x).groupby(['fc', 'fm'])['efr_amplitude'] \
+                .agg(['mean', 'std']).add_prefix('efr_sam_linear_').reset_index()
+        return self.load(_load_efr_sam_linear,
+                         '**/*efr_sam*EFR amplitude linear.csv',
+                         parse_psi_filename, **kwargs)
+
+    def load_efr_ram_linear(self, **kwargs):
+        def _load_efr_ram_linear(x):
+            return pd.read_csv(x).groupby(['fc', 'fm'])['efr_amplitude'] \
+                .agg(['mean', 'std']).add_prefix('efr_ram_linear_').reset_index()
+        return self.load(_load_efr_ram_linear,
+                         '**/*efr_ram*EFR amplitude linear.csv',
+                         parse_psi_filename, **kwargs)
+
+    def load_efr_sam_level(self, **kwargs):
+        return self.load(load_efr_level,
+                         '**/*efr_sam*stimulus levels.csv',
+                         parse_psi_filename, **kwargs)
+
+    def load_efr_ram_level(self, **kwargs):
+        return self.load(load_efr_level,
+                         '**/*efr_ram*stimulus levels.csv',
+                         parse_psi_filename, **kwargs)

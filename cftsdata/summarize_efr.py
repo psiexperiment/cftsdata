@@ -98,10 +98,12 @@ def process_file(filename, cb='tqdm', reprocess=False, segment_duration=0.5,
             # Remove extra frequencies (i.e., DC and negative frequencies) and
             # then calculate total level.
             level_freqs = fc + fm * level_harmonics
-            level_freqs = level_freqs[(level_freqs > 0) & (level_freqs <= mic_spl.index.max())]
-            levels = mic_spl[level_freqs]
+            level_freqs = level_freqs[(level_freqs > 0) & (level_freqs <= (fh.mic.fs / 2))]
+
+            levels = util.tone_power_conv(mic, fh.mic.fs, level_freqs).mean(axis=-1)
+            levels = cal.get_db(level_freqs, levels)
             total_level = 10 * np.log10(np.sum(10**(levels / 10)))
-            levels = levels.to_dict()
+            levels = {f: l for f, l in zip(level_freqs, levels)}
             levels['total'] = total_level
             levels_all.append(levels)
 
