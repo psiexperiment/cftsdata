@@ -162,7 +162,5 @@ def main_folder():
     import argparse
     parser = argparse.ArgumentParser('Summarize noise exposure data in folder')
     add_default_options(parser)
-    args = parser.parse_args()
-    process_files(args.folder, '**/*noise_exposure*',
-                  process_file, reprocess=args.reprocess,
-                  halt_on_error=args.halt_on_error)
+    args = vars(parser.parse_args())
+    process_files('**/*noise_exposure*', process_file, **args)
