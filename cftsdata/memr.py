@@ -115,6 +115,14 @@ class InterleavedMEMRFile(BaseMEMRFile):
         return self.get_setting('repeat_period')
 
     @lru_cache(maxsize=MAXSIZE)
+    def get_velocity(self, signal_name='turntable_linear_velocity'):
+        repeats = self._get_repeats(signal_name=signal_name)
+        return repeats.reset_index(['probe_t0', 't0'], drop=True)
+
+    def get_speed(self, signal_name='turntable_linear_velocity'):
+        return np.abs(self.get_velocity(signal_name))
+
+    @lru_cache(maxsize=MAXSIZE)
     def get_elicitor(self, signal_name='elicitor_microphone'):
         repeats = self._get_repeats(signal_name=signal_name)
         elicitor_delay = self.get_setting('elicitor_envelope_start_time')
@@ -123,11 +131,12 @@ class InterleavedMEMRFile(BaseMEMRFile):
 
     @lru_cache(maxsize=MAXSIZE)
     def get_probe(self, acoustic_delay=0.75e-3, signal_name='probe_microphone'):
-        repeats = self._get_repeats(signal_name=signal_name)
         probe_delay = self.get_setting('probe_delay')
         probe_duration = self.get_setting('probe_duration')
         probe_lb = acoustic_delay + probe_delay
         probe_ub = acoustic_delay + probe_delay + probe_duration
+
+        repeats = self._get_repeats(signal_name=signal_name)
         m = (repeats.columns >= probe_lb) & (repeats.columns < probe_ub)
         return repeats.loc[:, m].reset_index(['probe_t0', 't0'], drop=True)
 
@@ -137,6 +146,7 @@ class InterleavedMEMRFile(BaseMEMRFile):
         probe_duration = self.get_setting('probe_duration')
         silence_lb = acoustic_delay + probe_delay + probe_duration
         silence_ub = silence_lb + probe_duration
+
         repeats = self._get_repeats(signal_name=signal_name)
         m = (repeats.columns >= silence_lb) & (repeats.columns < silence_ub)
         return repeats.loc[:, m].reset_index(['probe_t0', 't0'], drop=True)
