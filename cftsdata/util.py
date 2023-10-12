@@ -1,3 +1,6 @@
+import logging
+log = logging.getLogger(__name__)
+
 import json
 import os
 from pathlib import Path
@@ -126,7 +129,7 @@ class DatasetManager:
             suffixes = [suffixes]
         for suffix in suffixes:
             if not self.get_proc_filename(suffix).exists():
-                print(f'{suffix} is missing')
+                log.info(f'Needs reprocessing since {suffix} is missing')
                 return False
         return True
 
