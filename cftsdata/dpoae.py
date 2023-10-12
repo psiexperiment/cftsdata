@@ -98,15 +98,19 @@ class DPOAEFile(Recording):
     def results(self):
         data = getattr(self, 'dpoae_store')
         data = data.rename(columns=dpoae_renamer)
+        m = data['capture'].diff() == 0
+        print(f'Dropping {m.mean()*100:.0f}% of trials since they are repeated averages')
+        data = data.loc[~m]
 
         # Add in the start/stop time of the actual stimulus itself. The
         # ts_start and ts_end timestamps indicate what was captured for the
         # online analysis.
-        ts = self.event_log.query('event in ("dpoae_start", "experiment_end")')['timestamp'].values
+        ts = self.event_log.query('event == "dpoae_start"')['timestamp'].values.tolist()
+        ts.append(self.system_microphone.duration)
         ts_start = ts[:-1]
         ts_end = ts[1:]
         if len(ts_start) != len(data):
-            raise ValueError('Mismatch between event log and DPOAE metadata')
+                raise ValueError('Mismatch between event log and DPOAE metadata')
         data['dp_start'] = ts_start
         data['dp_end'] = ts_end
         return data

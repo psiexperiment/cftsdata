@@ -273,7 +273,8 @@ def main_folder_dpoae():
     parser = argparse.ArgumentParser('Summarize DPOAE IO data in folder')
     add_default_options(parser)
     args = vars(parser.parse_args())
-    process_files('**/*dpoae_io*', process_file_dpoae, **args)
+    # This will exclude the dual_dpoae_io files.
+    process_files('**/*[!_]dpoae_io*', process_file_dpoae, **args)
 
 
 def main_folder_dpgram():
