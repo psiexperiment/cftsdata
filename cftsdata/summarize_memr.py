@@ -78,6 +78,9 @@ def plot_elicitor_spl(elicitor_db, elicitor_levels, settings):
         if settings is not None:
             ax.axvspan(settings['elicitor_fl'], settings['elicitor_fh'], color='lightblue')
 
+    if settings is not None:
+        fig.suptitle(f'Elicitor starship {settings["elicitor_starship"]}')
+
     lb = elicitor_levels['weighted'].min()
     ub = elicitor_levels['weighted'].max()
     level_ax.plot([lb, ub], [lb, ub], '-', color='seagreen')
@@ -96,7 +99,7 @@ def plot_elicitor_spl(elicitor_db, elicitor_levels, settings):
 
 
 def plot_probe_level(probe, silence, probe_psd, silence_psd, speed,
-                     speed_cutoff=0.5, alpha=0.25):
+                     speed_cutoff=0.5, alpha=0.25, settings=None):
     gs = GridSpec(3, 3)
 
     fig = plt.Figure(figsize=(12, 12))
@@ -155,6 +158,9 @@ def plot_probe_level(probe, silence, probe_psd, silence_psd, speed,
     ax_speed.set_ylabel('Probe #')
     ax_speed.legend()
 
+    if settings is not None:
+        fig.suptitle(f'Probe starship {settings["probe_starship"]}')
+
     fig.tight_layout()
     return fig
 
@@ -189,6 +195,11 @@ def plot_memr(memr_db, memr_level, settings):
         if len(ax.lines) == 0:
             ax.remove()
 
+    ps = settings['probe_starship']
+    es = settings['elicitor_starship']
+    side = 'Ipsilateral' if ps == es else 'Contralateral'
+    figure.suptitle(f'{side} MEMR (probe {ps}, elicitor {es})')
+
     axes[0, 0].set_xscale('octave')
     axes[0, 0].axis(xmin=settings['probe_fl'], xmax=settings['probe_fh'], ymin=-4, ymax=4)
     axes[0, -1].legend(loc='upper left', bbox_to_anchor=(1.1, 1.05))
@@ -212,6 +223,8 @@ def get_settings(fh):
         'elicitor_n': fh.get_setting('elicitor_n'),
         'weighting': fh.get_setting('elicitor_bandlimited_noise_audiogram_weighting'),
         'turntable_speed': fh.get_setting('max_turntable_speed'),
+        'probe_starship': fh.get_setting('probe'),
+        'elicitor_starship': fh.get_setting('elicitor'),
     }
 
 
