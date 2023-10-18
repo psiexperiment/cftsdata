@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-import palettable
+from palettable.colorbrewer import qualitative
 
 from psiaudio.plot import iter_colors, waterfall_plot
 from psiaudio import util, weighting
@@ -15,7 +15,7 @@ from .memr import InterleavedMEMRFile, SimultaneousMEMRFile
 from .util import add_default_options, DatasetManager, process_files
 
 
-expected_suffixes = [
+int_expected_suffixes = [
     'stimulus train.pdf',
     'elicitor PSD.pdf',
     'probe PSD.pdf',
@@ -85,7 +85,11 @@ def plot_elicitor_spl(elicitor_db, elicitor_levels, settings):
     ub = elicitor_levels['weighted'].max()
     level_ax.plot([lb, ub], [lb, ub], '-', color='seagreen')
     kw = {'mec': 'w', 'mew': 1}
-    level_ax.plot(elicitor_levels['requested'], elicitor_levels['weighted'], 'o', color='k', label='Level (dB re weighting)', **kw)
+    # Don't plot the weighted values if there was no weighting applied.
+    w = settings['weighting']
+    # np.isnan does not work on strings, so just convert np.nan to string for the check.
+    if str(w) != 'nan':
+        level_ax.plot(elicitor_levels['requested'], elicitor_levels['weighted'], 'o', color='k', label=f'Level (dB re {w})', **kw)
     level_ax.plot(elicitor_levels['requested'], elicitor_levels['actual'], 'o', color='0.5', label='Level (dB SPL)', **kw)
     level_ax.grid()
     level_ax.set_xlabel('Requested level')
@@ -126,15 +130,15 @@ def plot_probe_level(probe, silence, probe_psd, silence_psd, speed,
     ax_probe.legend([p_handle, s_handle], ['Probe', 'Silence'])
 
     valid = speed < speed_cutoff
-    ax_probe_psd_valid.plot(probe_psd.columns.values, probe_psd.loc[~valid].values.T, alpha=alpha, color='r', lw=0.25)
-    ax_probe_psd_valid.plot(probe_psd.columns.values, probe_psd.loc[valid].values.T, alpha=alpha, color='k', lw=0.25)
+    ax_probe_psd_valid.plot(probe_psd.columns.values, probe_psd.loc[valid].values.T, alpha=alpha, color='seagreen', lw=0.25)
+    ax_probe_psd_valid.plot(probe_psd.columns.values, probe_psd.loc[~valid].values.T, alpha=alpha, color='sienna', lw=0.25)
     ax_probe_psd_valid.set_ylabel('Level (dB SPL)')
     ax_probe_psd_valid.set_xlabel('Frequency (kHz)')
     ax_probe_psd_valid.set_xscale('octave')
     ax_probe_psd_valid.axis(xmin=500, xmax=50000, ymin=0)
-    p_handle = Line2D([0], [0], color='k')
-    s_handle = Line2D([0], [0], color='r')
-    ax_probe_psd_valid.legend([p_handle, s_handle], ['Probe', 'Silence'])
+    p_handle = Line2D([0], [0], color='seagreen')
+    s_handle = Line2D([0], [0], color='sienna')
+    ax_probe_psd_valid.legend([p_handle, s_handle], ['Valid', 'Reject'])
 
     level = pd.DataFrame({
         'probe': probe_psd.apply(util.rms_rfft_db, axis=1),
@@ -169,16 +173,26 @@ def plot_memr(memr_db, memr_level, settings):
     n_repeat = len(memr_db.index.unique('repeat'))
     figure, axes = plt.subplots(3, n_repeat, figsize=(3.5*n_repeat, 7/2*3), sharex='row', sharey='row')
 
+    colors = getattr(qualitative, f'Accent_{len(memr_level.columns)}')
+    colormap = dict(zip(memr_level.columns.values, colors.mpl_colors))
+
     for i, (repeat, memr_r) in enumerate(memr_db.groupby('repeat')):
         ax = axes[0, i]
         for c, ((_, elicitor), row) in iter_colors(list(memr_r.iterrows())):
             ax.plot(row, color=c, label=f'{elicitor:.0f} dB SPL')
+            for n, (d, lb, ub) in memr_level.attrs['span'].items():
+                if d == 'N':
+                    ax.axvspan(lb, ub, ymax=0.05, color=colormap[n], alpha=0.25)
+                elif d == 'P':
+                    ax.axvspan(lb, ub, ymin=0.95, color=colormap[n], alpha=0.25)
+                else:
+                    raise ValueError('Unsupported peak type')
         ax.grid()
         ax.set_xlabel('Frequency (kHz)')
         ax.set_title(f'Repeat {repeat}')
         ax = axes[1, i]
         for label in memr_level.loc[repeat]:
-            ax.plot(memr_level.loc[repeat, label], label=label)
+            ax.plot(memr_level.loc[repeat, label], label=label, color=colormap[label])
         ax.grid()
         ax.set_xlabel('Elicitor level (dB SPL)')
 
@@ -186,6 +200,7 @@ def plot_memr(memr_db, memr_level, settings):
         for c, (r, r_df) in iter_colors(memr_level[label].groupby('repeat')):
             r_df = r_df.reset_index()
             ax.plot(r_df['elicitor_level'], r_df[label], label=f'Repeat {r}', color=c)
+            ax.set_title(label)
         ax.legend()
         ax.grid()
         ax.set_xlabel('Elicitor level (dB SPL)')
@@ -230,9 +245,9 @@ def get_settings(fh):
 
 def process_interleaved_file(filename, cb, reprocess=False, acoustic_delay=0.75e-3, **kwargs):
     manager = DatasetManager(filename, **kwargs)
-    if not reprocess and manager.is_processed(expected_suffixes):
+    if not reprocess and manager.is_processed(int_expected_suffixes):
         return
-    manager.clear(expected_suffixes)
+    manager.clear(int_expected_suffixes)
 
     with manager.create_cb(cb) as cb:
         fh = InterleavedMEMRFile(filename)
@@ -294,21 +309,29 @@ def process_interleaved_file(filename, cb, reprocess=False, acoustic_delay=0.75e
         probe_valid_mean = probe_valid.groupby(['repeat', 'elicitor_level']).mean()
         probe_valid_psd_mean = util.psd_df(probe_valid_mean, fh.probe_microphone.fs)
         memr_db = util.db(probe_valid_psd_mean.loc[1:] / probe_valid_psd_mean.loc[0])
+
+        # Calculate the average MEMR across all four repeats.
         memr_db_mean = memr_db.groupby(['elicitor_level']).mean()
         memr_db_mean = pd.concat([memr_db_mean], keys=['Average'], names=['repeat'])
         memr_db = pd.concat([memr_db_mean, memr_db])
-        memr_amplitude = pd.DataFrame({
-            'negative': -memr_db.loc[:, 5.6e3:11.3e3].min(axis=1),
-            'positive': memr_db.loc[:, 8e3:16e3].max(axis=1),
-        })
 
-        probe_mean = probe.groupby(['repeat', 'elicitor_level']).mean()
-        probe_psd_mean = util.psd_df(probe_mean, fh.probe_microphone.fs)
-        memr_db = util.db(probe_psd_mean.loc[1:]/probe_psd_mean.loc[0])
-        memr_amplitude = pd.DataFrame({
-            'negative': -memr_db.loc[:, 5.6e3:11.3e3].min(axis=1),
-            'positive': memr_db.loc[:, 8e3:16e3].max(axis=1),
-        })
+        # Caluclate the MEMR amplitude
+        spans = {
+            'P1': ('P', 4e3, 8e3),
+            'N1': ('N', 5.6e3, 11e3),
+            'P2': ('P', 8e3, 16e3),
+            'N2': ('N', 11.3e3, 22.6e3),
+            'P3': ('P', 16e3, 32e3),
+        }
+
+        memr_amplitude = {}
+        for (name, (p, lb, ub)) in spans.items():
+            if p == 'P':
+                memr_amplitude[name] = memr_db.loc[:, lb:ub].max(axis=1)
+            elif p == 'N':
+                memr_amplitude[name] = -memr_db.loc[:, lb:ub].min(axis=1)
+        memr_amplitude = pd.DataFrame(memr_amplitude)
+        memr_amplitude.attrs['span'] = spans
 
         # Plot the positive polarity first
         stim_train_figure, ax = plot_stim_train(epochs_mean.loc[1], settings)
@@ -328,80 +351,90 @@ def process_interleaved_file(filename, cb, reprocess=False, acoustic_delay=0.75e
 
         plt.close('all')
 
+sim_expected_suffixes = [
+    'elicitor PSD.pdf'
+]
 
-def process_simultaneous_file(filename, cb, reprocess=False):
-    manager = DatasetManager(filename)
-    if not reprocess and manager.is_processed(['elicitor PSD.pdf']): return
-    fh = SimultaneousMEMRFile(filename)
+def process_simultaneous_file(filename, cb, reprocess=False, **kwargs):
+    manager = DatasetManager(filename, **kwargs)
+    if not reprocess and manager.is_processed(sim_expected_suffixes):
+        return
+    manager.clear(sim_expected_suffixes)
 
-    cal = fh.probe_microphone.get_calibration()
-    fs = fh.probe_microphone.fs
-    repeats = fh.get_repeats()
-    probe_window = fh.get_setting('probe_duration') + 1.5e-3
-    probes = repeats.loc[:, :probe_window]
-    probe_mean = probes.groupby(['elicitor_level', 'group']).mean()
-    probe_spl = cal.get_db(util.psd_df(probe_mean, fs=fs))
-    probe_spl_mean = probe_spl.groupby(['elicitor_level', 'group']).mean()
-    baseline = probe_spl_mean.xs('baseline', level='group')
-    elicitor = probe_spl_mean.xs('elicitor', level='group')
-    memr = elicitor - baseline
+    with manager.create_cb(cb) as cb:
+        fh = SimultaneousMEMRFile(filename)
 
-    epochs = fh.get_epochs()
-    onset = fh.get_setting('elicitor_onset')
-    duration = fh.get_setting('elicitor_duration')
-    elicitor = epochs.loc[:, onset:onset+duration]
-    elicitor_waveform = elicitor.loc[1].groupby(['elicitor_level']).mean()
-    elicitor_spl = cal.get_db(util.psd_df(elicitor, fs=fs)).dropna(axis='columns')
-    elicitor_spl_mean = elicitor_spl.groupby('elicitor_level').mean()
+        probe_cal = fh.probe_microphone.get_calibration()
+        elicitor_cal = fh.elicitor_microphone.get_calibration()
 
-    figure, axes = plt.subplots(2, 2, figsize=(8, 8), sharex=True, sharey=True)
-    t = probe_mean.columns * 1e3
-    for (group, g_df), ax in zip(probe_mean.groupby('group'), axes.flat):
-        ax.set_title(f'{group}')
-        for level, row in g_df.iterrows():
-            ax.plot(t, row, lw=1, label=f'{level[0]} dB SPL')
-    for ax in axes[1]:
-        ax.set_xlabel('Time (ms)')
-    for ax in axes[:, 0]:
-        ax.set_ylabel('Signal (V)')
-    axes[0, 1].legend(bbox_to_anchor=(1, 1), loc='upper left')
-    figure.savefig(manager.get_proc_filename('probe_waveform.pdf'), bbox_inches='tight')
+        fs = fh.probe_microphone.fs
 
-    figure, axes = plt.subplots(2, 2, figsize=(8, 8), sharex=True, sharey=True)
-    for (group, g_df), ax in zip(probe_spl_mean.iloc[:, 1:].groupby('group'), axes.flat):
-        ax.set_title(f'{group}')
-        for level, row in g_df.iterrows():
-            ax.plot(row.index, row, lw=1, label=f'{level[0]} dB SPL')
-    for ax in axes[1]:
+        epochs = fh.get_epochs()
+        repeats = fh.get_repeats()
+
+        probe_window = fh.get_setting('probe_duration') + 1.5e-3
+        probes = repeats.loc[:, :probe_window]
+        probe_mean = probes.groupby(['elicitor_level', 'group']).mean()
+        probe_spl = probe_cal.get_db(util.psd_df(probe_mean, fs=fs))
+        probe_spl_mean = probe_spl.groupby(['elicitor_level', 'group']).mean()
+        baseline = probe_spl_mean.xs('baseline', level='group')
+        elicitor = probe_spl_mean.xs('elicitor', level='group')
+        memr = elicitor - baseline
+
+        onset = float(fh.get_setting('elicitor_onset'))
+        duration = float(fh.get_setting('elicitor_duration'))
+        elicitor = epochs.loc[:, onset:onset+duration]
+        elicitor_waveform = elicitor.loc[1].groupby(['elicitor_level']).mean()
+        elicitor_spl = elicitor_cal.get_db(util.psd_df(elicitor, fs=fs)).dropna(axis='columns')
+        elicitor_spl_mean = elicitor_spl.groupby('elicitor_level').mean()
+
+        figure, axes = plt.subplots(2, 2, figsize=(8, 8), sharex=True, sharey=True)
+        t = probe_mean.columns * 1e3
+        for (group, g_df), ax in zip(probe_mean.groupby('group'), axes.flat):
+            ax.set_title(f'{group}')
+            for level, row in g_df.iterrows():
+                ax.plot(t, row, lw=1, label=f'{level[0]} dB SPL')
+        for ax in axes[1]:
+            ax.set_xlabel('Time (ms)')
+        for ax in axes[:, 0]:
+            ax.set_ylabel('Signal (V)')
+        axes[0, 1].legend(bbox_to_anchor=(1, 1), loc='upper left')
+        figure.savefig(manager.get_proc_filename('probe_waveform.pdf'), bbox_inches='tight')
+
+        figure, axes = plt.subplots(2, 2, figsize=(8, 8), sharex=True, sharey=True)
+        for (group, g_df), ax in zip(probe_spl_mean.iloc[:, 1:].groupby('group'), axes.flat):
+            ax.set_title(f'{group}')
+            for level, row in g_df.iterrows():
+                ax.plot(row.index, row, lw=1, label=f'{level[0]} dB SPL')
+        for ax in axes[1]:
+            ax.set_xlabel('Frequency (kHz)')
+        for ax in axes[:, 0]:
+            ax.set_ylabel('PSD (dB SPL)')
+        axes[0, 1].legend(bbox_to_anchor=(1, 1), loc='upper left')
+        axes[0, 0].set_xscale('octave')
+        axes[0, 0].axis(xmin=4e3, xmax=32e3)
+        figure.savefig(manager.get_proc_filename('probe PSD.pdf'), bbox_inches='tight')
+
+        figure, ax = plt.subplots(1, 1, figsize=(6, 6))
+        for c, (level, row) in iter_colors(list(memr.iloc[:, 1:].iterrows())):
+            ax.plot(row, label=f'{level} dB SPL', color=c)
+        ax.set_xscale('octave')
+        ax.axis(xmin=4e3, xmax=32e3, ymin=-5, ymax=5)
+        ax.legend(bbox_to_anchor=(1, 1), loc='upper left')
         ax.set_xlabel('Frequency (kHz)')
-    for ax in axes[:, 0]:
-        ax.set_ylabel('PSD (dB SPL)')
-    axes[0, 1].legend(bbox_to_anchor=(1, 1), loc='upper left')
-    axes[0, 0].set_xscale('octave')
-    axes[0, 0].axis(xmin=4e3, xmax=32e3)
-    figure.savefig(manager.get_proc_filename('probe PSD.pdf'), bbox_inches='tight')
+        ax.set_ylabel('MEMR (dB re baseline)')
+        figure.savefig(manager.get_proc_filename('MEMR.pdf'), bbox_inches='tight')
 
-    figure, ax = plt.subplots(1, 1, figsize=(6, 6))
-    colors = get_colors(len(memr))
-    for c, level, row in zip(colors, memr.iloc[:, 1:].iterrows()):
-        ax.plot(row, label=f'{level} dB SPL', color=c)
-    ax.set_xscale('octave')
-    ax.axis(xmin=4e3, xmax=32e3, ymin=-5, ymax=5)
-    ax.legend(bbox_to_anchor=(1, 1), loc='upper left')
-    ax.set_xlabel('Frequency (kHz)')
-    ax.set_ylabel('MEMR (dB re baseline)')
-    figure.savefig(manager.get_proc_filename('MEMR.pdf'), bbox_inches='tight')
+        figure, ax = plt.subplots(1, 1, figsize=(6, 1 * len(elicitor_waveform)))
+        waterfall_plot(ax, elicitor_waveform, 'elicitor_level',
+                    plotkw={'lw': 0.1, 'color': 'k'})
+        figure.savefig(manager.get_proc_filename('elicitor waveform.pdf'), bbox_inches='tight')
 
-    figure, ax = plt.subplots(1, 1, figsize=(6, 1 * len(elicitor_waveform)))
-    waterfall_plot(ax, elicitor_waveform, 'elicitor_level',
-                   plotkw={'lw': 0.1, 'color': 'k'})
-    figure.savefig(manager.get_proc_filename('elicitor waveform.pdf'), bbox_inches='tight')
-
-    figure, ax = plt.subplots(1, 1, figsize=(6, 1 * len(elicitor_spl_mean)))
-    waterfall_plot(ax, elicitor_spl_mean, 'elicitor_level',
-                   plotkw={'lw': 0.1, 'color': 'k'}, scale_method='mean')
-    figure.savefig(manager.get_proc_filename('elicitor PSD.pdf'), bbox_inches='tight')
-    plt.close('all')
+        figure, ax = plt.subplots(1, 1, figsize=(6, 1 * len(elicitor_spl_mean)))
+        waterfall_plot(ax, elicitor_spl_mean, 'elicitor_level',
+                    plotkw={'lw': 0.1, 'color': 'k'}, scale_method='mean')
+        figure.savefig(manager.get_proc_filename('elicitor PSD.pdf'), bbox_inches='tight')
+        plt.close('all')
 
 
 def main_simultaneous_folder():
