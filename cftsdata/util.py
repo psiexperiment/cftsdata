@@ -1,6 +1,7 @@
 import logging
 log = logging.getLogger(__name__)
 
+import fnmatch
 import json
 import os
 from pathlib import Path
@@ -41,6 +42,14 @@ def process_files(glob_pattern, fn, folder, cb='tqdm', reprocess=False,
     processed = []
     skipped = []
     errors = []
+
+    # Adds a shortcut for situations where the full path to a single data
+    # folder is provided.
+    if fnmatch.fnmatch(folder, glob_pattern):
+        fn(folder, cb=cb, reprocess=reprocess)
+        print(f'Processed {folder}')
+        return
+
     for filename in Path(folder).glob(glob_pattern):
         if filename.suffix == '.md5':
             continue
