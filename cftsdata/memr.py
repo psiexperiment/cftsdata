@@ -73,7 +73,10 @@ class BaseMEMRFile(Recording):
             self.memr_metadata, 0, self.trial_duration,
             columns=columns, cb=cb).sort_index()
         if add_trial:
+            dtype = epochs.columns.dtype
+            # This is converting a float column index to an object index.
             epochs = util.add_trial(epochs, epochs.index.names[:-1])
+            epochs.columns = epochs.columns.astype(dtype)
         return epochs
 
     @lru_cache(maxsize=MAXSIZE)
@@ -164,7 +167,7 @@ class SimultaneousMEMRFile(BaseMEMRFile):
 
     def get_repeats(self, columns='auto', signal_name='probe_microphone',
                     norm_window=None):
-        repeats = super().get_repeats(columns, signal_name)
+        repeats = super()._get_repeats(columns, signal_name)
 
         probe_n = self.get_setting('probe_n')
         onset = self.get_setting('elicitor_onset')
