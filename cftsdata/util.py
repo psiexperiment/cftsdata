@@ -52,6 +52,13 @@ def process_files(glob_pattern, fn, folder, cb='tqdm', reprocess=False,
 
     for filename in Path(folder).glob(glob_pattern):
         if filename.suffix == '.md5':
+            # Skip the MD5 checksum files
+            continue
+        if filename.is_dir():
+            # Make sure that it is actually a psiexperiment recording
+            if not (filename / 'io.json').exists():
+                continue
+        elif filename.suffix != '.zip':
             continue
         try:
             if fn(filename, cb=cb, reprocess=reprocess):
@@ -95,29 +102,21 @@ def cal_from_epl(name, base_path=None):
                                       phase=cal['phase'])
 
 
-class DatasetManager:
+class BaseDatasetManager:
 
-    def __init__(self, path, raw_dir=None, proc_dir=None, file_template=None):
+    def __init__(self, path, file_template=None):
         '''
         Manages paths of processed files given the relative path between the
         raw and processed directory structure.
 
         Parameters
         ----------
-        raw_dir : {None, str, Path}
+        path : {str, Path}
             Base path containing raw data
-        proc_dir : {None, str, Path}
-            Base path containing processed data
         file_template : {None, str}
             If None, defaults to the filename stem
         '''
-        if raw_dir is None:
-            raw_dir = os.environ.get('RAW_DATA_DIR', None)
-        if proc_dir is None:
-            proc_dir = os.environ.get('PROC_DATA_DIR', None)
         self.path = Path(path)
-        self.raw_dir = Path(raw_dir)
-        self.proc_dir = Path(proc_dir)
         if file_template is None:
             file_template = f'{self.path.stem}'
         self.file_template = file_template
@@ -126,7 +125,7 @@ class DatasetManager:
         return CallbackManager(get_cb(cb, self.path.stem))
 
     def get_proc_path(self):
-        return self.proc_dir / self.path.parent.relative_to(self.raw_dir) / self.path.stem
+        raise NotImplementedError
 
     def get_proc_filename(self, suffix, mkdir=True):
         proc_path = self.get_proc_path()
@@ -167,3 +166,41 @@ class DatasetManager:
             filename = self.get_proc_filename(suffix)
             if filename.exists():
                 filename.unlink()
+
+
+class CombinedDatasetManager(BaseDatasetManager):
+
+    def get_proc_path(self):
+        return self.path.parent
+
+
+class SplitDatasetManager(BaseDatasetManager):
+
+    def __init__(self, path, raw_dir=None, proc_dir=None, file_template=None):
+        '''
+        Manages paths of processed files given the relative path between the
+        raw and processed directory structure.
+
+        Parameters
+        ----------
+        raw_dir : {None, str, Path}
+            Base path containing raw data
+        proc_dir : {None, str, Path}
+            Base path containing processed data
+        file_template : {None, str}
+            If None, defaults to the filename stem
+        '''
+        super().__init__(path, file_template)
+        if raw_dir is None:
+            raw_dir = os.environ.get('RAW_DATA_DIR', None)
+        if proc_dir is None:
+            proc_dir = os.environ.get('PROC_DATA_DIR', None)
+        self.raw_dir = Path(raw_dir)
+        self.proc_dir = Path(proc_dir)
+
+    def get_proc_path(self):
+        return self.proc_dir / self.path.parent.relative_to(self.raw_dir) / self.path.stem
+
+
+# TODO: How do we make this so that it is a bit more clever about selecting the correct manager based on preference?
+DatasetManager = CombinedDatasetManager
