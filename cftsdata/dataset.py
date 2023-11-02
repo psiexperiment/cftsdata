@@ -85,19 +85,16 @@ def coerce_frequency(columns, octave_step):
 
 class Dataset:
 
-    def __init__(self, ephys_path=None, subpath=None, raw_ephys_path=None):
+    def __init__(self, ephys_path=None, subpath=None):
         if ephys_path is None:
             ephys_path = os.environ['PROC_DATA_DIR']
-        if raw_ephys_path is None:
-            raw_ephys_path = os.environ['RAW_DATA_DIR']
-
         self.ephys_path = Path(ephys_path)
-        self.raw_ephys_path = Path(raw_ephys_path)
+        self.subpath = subpath
         if subpath is not None:
             self.ephys_path = self.ephys_path / subpath
-            self.raw_ephys_path = self.raw_ephys_path / subpath
         if not self.ephys_path.exists():
             raise ValueError(f'Unknown data path {self.ephys_path}')
+        self.raw_ephys_path = self.ephys_path
 
     def load_raw(self, cb, etype=None, **kwargs):
         wildcard = '**/*.zip' if etype is None else f'**/*{etype}*.zip'
@@ -107,7 +104,7 @@ class Dataset:
         return self.load_raw(lambda x: {}, filename_parser=parse_psi_filename,
                              **kwargs)
 
-    def load_raw_json(self, filename, json_path, etype=None):
+    def load_raw_json(self, filename, json_path, etype=None, **kwargs):
         '''
         Load value from JSON file saved to raw data
         '''
@@ -121,7 +118,7 @@ class Dataset:
                     if len(result) > 1:
                         raise ValueError(f'More than one match found for path "{json_path}"')
                     return {str(result[0].full_path): result[0].value}
-        return self.load_raw(cb, etype)
+        return self.load_raw(cb, etype, **kwargs)
 
     def load(self, cb, glob, filename_parser=None, data_path=None,
              include_dataset=False, should_load_cb=None):
