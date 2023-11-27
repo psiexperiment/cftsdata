@@ -32,15 +32,16 @@ cfts-zip-multirater-abr-data = "cftsdata.postprocess:zip_multirater_abr_data"
 cfts-invert-eeg-data = "cftsdata.postprocess:invert_eeg_data"
 
 summarize-abr-file = "cftsdata.summarize_abr:main_file"
+
 summarize-abr-folder = "cftsdata.summarize_abr:main_folder"
 summarize-iec-folder = "cftsdata.summarize_iec:main_folder"
 summarize-dpoae-folder = "cftsdata.summarize_dpoae:main_folder_dpoae"
 summarize-dpgram-folder = "cftsdata.summarize_dpoae:main_folder_dpgram"
 summarize-efr-folder = "cftsdata.summarize_efr:main_folder"
-summarize-efr-file = "cftsdata.summarize_efr:main_file"
 summarize-interleaved-memr-folder = "cftsdata.summarize_memr:main_interleaved_folder"
 summarize-simultaneous-memr-folder = "cftsdata.summarize_memr:main_simultaneous_folder"
 summarize-noise-exposure-folder = "cftsdata.summarize_noise_exposure:main_folder"
+
 summarize-noise-exposure-file = "cftsdata.summarize_noise_exposure:main_file"
 
 [build-system]
