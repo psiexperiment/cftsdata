@@ -258,15 +258,6 @@ def process_file(filename, cb='tqdm', reprocess=False, segment_duration=0.5,
     return True
 
 
-def main_file():
-    import argparse
-    parser = argparse.ArgumentParser('Summarize EFR file')
-    parser.add_argument('filename')
-    parser.add_argument('--reprocess', action='store_true')
-    args = parser.parse_args()
-    process_file(args.filename, reprocess=args.reprocess)
-
-
 def main_folder():
     import argparse
     parser = argparse.ArgumentParser('Summarize EFR in folder')
