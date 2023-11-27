@@ -179,22 +179,27 @@ class Dataset:
                           '**/*dpoae_io io.csv',
                           parse_psi_filename, **kwargs)
 
-    def load_dpoae_th(self, **kwargs):
+    def load_dpoae_th(self, criterion=None, **kwargs):
         def _load_dpoae_th(x):
             df = pd.read_csv(x, index_col=0)
             df.columns = df.columns.astype('f')
+            if criterion is not None:
+                df = df.loc[:, [criterion]]
             df.columns.name = 'criterion'
             return df.stack().rename('threshold').reset_index()
+
         return self.load(_load_dpoae_th,
                           '**/*dpoae_io th.csv',
                           parse_psi_filename, **kwargs)
 
-    def load_abr_io(self, **kwargs):
+    def load_abr_io(self, level=None, **kwargs):
         def _load_abr_io(x):
             freq, th, rater, peaks = load_abr_analysis(x)
             peaks = peaks.reset_index()
             peaks['frequency'] = freq
             peaks['rater'] = rater
+            if level is not None:
+                peaks = peaks.query(f'level == {level}')
             return peaks
         abr_io = self.load(_load_abr_io,
                             '**/*analyzed.txt',
