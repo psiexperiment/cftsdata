@@ -18,7 +18,6 @@ from .util import add_default_options, DatasetManager, process_files
 int_expected_suffixes = [
     'stimulus train.pdf',
     'elicitor PSD.pdf',
-    'probe PSD.pdf',
     'probe level.pdf',
     'MEMR.pdf',
     'elicitor level.csv',
