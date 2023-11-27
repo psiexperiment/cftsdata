@@ -10,6 +10,7 @@ import pandas as pd
 from psiaudio import util
 
 from cftsdata.abr import load_abr_analysis
+from cftsdata.summarize_abr import load_abr_waveforms
 
 
 class BadFilenameException(Exception):
@@ -217,6 +218,16 @@ class Dataset:
                           glob,
                           parse_psi_filename,
                           **kwargs)
+
+    def load_abr_waveforms(self, **kwargs):
+        def _load_abr_waveforms(x):
+            df = load_abr_waveforms(x)
+            df = df.stack().rename('signal').reset_index()
+            return df.rename(columns={'time': 'timepoint'})
+        return self.load(_load_abr_waveforms,
+                         '**/*ABR average waveforms.csv',
+                         parse_psi_filename,
+                         **kwargs)
 
     def load_abr_settings(self, **kwargs):
         def _load_abr_settings(x):
