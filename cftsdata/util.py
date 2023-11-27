@@ -35,10 +35,15 @@ def add_default_options(parser):
     parser.add_argument('folder', type=str, help='Folder containing data')
     parser.add_argument('--reprocess', action='store_true', help='Reprocess all data in folder')
     parser.add_argument('--halt-on-error', action='store_true', help='Stop on error?')
+    parser.add_argument('--logging-level', type=str, help='Logging level')
 
 
 def process_files(glob_pattern, fn, folder, cb='tqdm', reprocess=False,
-                  halt_on_error=False):
+                  halt_on_error=False, logging_level=None):
+
+    if logging_level is not None:
+        logging.basicConfig(level=logging_level.upper())
+
     processed = []
     skipped = []
     errors = []
