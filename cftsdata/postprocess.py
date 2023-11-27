@@ -127,15 +127,19 @@ def zip_unrated_abr_data():
     parser.add_argument('-p', '--path', type=Path)
     parser.add_argument('-s', '--subpath', type=str)
     parser.add_argument('-v', '--verbose', action='store_true')
-    parser.add_argument('rater', type=str)
+    parser.add_argument('rater', type=str, nargs='+')
     parser.add_argument('output', type=Path)
     args = parser.parse_args()
     dataset = Dataset(ephys_path=args.path, subpath=args.subpath)
 
     freqs = dataset.load_abr_frequencies(include_dataset=True)
-    th = dataset.load_abr_th(args.rater, include_dataset=True)
     all_datasets = set((r['dataset'], r['frequency']) for _, r in freqs.iterrows())
-    rated_datasets = set((r['dataset'], r['frequency']) for _, r in th.iterrows())
+
+    rated_datasets = set()
+    for rater in args.rater:
+        th = dataset.load_abr_th(rater, include_dataset=True)
+        rated_datasets |= set((r['dataset'], r['frequency']) for _, r in th.iterrows())
+
     unrated_datasets = all_datasets - rated_datasets
     unrated_folders = set(ds[0] for ds in unrated_datasets)
     if args.verbose:
@@ -143,6 +147,7 @@ def zip_unrated_abr_data():
               f'{len(unrated_folders)} experiments to process.')
         for folder in sorted(unrated_folders):
             print(f' • {folder}')
+
     if len(unrated_folders):
         _zip_abr_folders(unrated_folders, args.output, dataset.ephys_path,
                          args.rater)
