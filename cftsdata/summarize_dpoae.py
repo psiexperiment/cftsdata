@@ -110,9 +110,8 @@ def process_file_dpoae(filename, cb, reprocess=False):
     if not reprocess and manager.is_processed(dpoae_expected_suffixes):
         return False
 
-    manager.clear(dpoae_expected_suffixes)
-
     with manager.create_cb(cb) as cb:
+        manager.clear(dpoae_expected_suffixes)
         fh = DPOAEFile(filename)
         freq = fh.results['f2_frequency'].unique()
         level = fh.results['f2_level'].unique()
@@ -166,7 +165,7 @@ def process_file_dpoae(filename, cb, reprocess=False):
         for ax in axes[-1]:
             ax.set_xlabel('Frequency (kHz)')
         for ax in axes[:, 0]:
-            ax.set_xlabel('PSD (dB)')
+            ax.set_ylabel('PSD (dB SPL)')
 
         th = measured.groupby('f2').apply(isodp_th_criterions)
         th_figure, ax = plt.subplots(1, 1, figsize=(4, 4))
@@ -175,7 +174,7 @@ def process_file_dpoae(filename, cb, reprocess=False):
         ax.set_xscale('octave', octaves=0.5)
         ax.set_xlabel('$f_2$ frequency (kHz)')
         ax.set_ylabel('IsoDP threshold (dB SPL)')
-        ax.legend()
+        ax.legend(bbox_to_anchor=(1, 1), loc='upper left')
 
         manager.save_dataframe(measured, 'io.csv')
         manager.save_dataframe(th, 'th.csv')
