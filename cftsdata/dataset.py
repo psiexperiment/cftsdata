@@ -56,7 +56,7 @@ def load_efr_level(filename, which='total'):
     return result
 
 
-def coerce_frequency(columns, octave_step):
+def coerce_frequency(columns, octave_step, si_prefix=''):
     '''
     Decorator for methods in subclasses of `Dataset` that coerce frequencies in
     the DataFrame to the nearest octave.
@@ -67,15 +67,24 @@ def coerce_frequency(columns, octave_step):
         Name or names of columns containing frequencies to coerce.
     octave_step : float
         Octave step to coerce frequencies.
+    si_prefix : {'', 'k', list of string}
+        Ensure that coercion is based on expected scale given SI unit. If list,
+        must be one of the valid choices listed above. See
+        `psiaudio.util.nearest_octave` for more information.
     '''
     if isinstance(columns, str):
         columns = [columns]
+    if isinstance(si_prefix, str):
+        si_prefix = [si_prefix] * len(columns)
+    if len(columns) != len(si_prefix):
+        raise ValueError('Length of si_prefix should match length of columns')
+
     def inner(fn):
         def wrapper(*args, **kwargs):
             result = fn(*args, **kwargs)
-            for c in columns:
+            for c, si in zip(columns, si_prefix):
                 try:
-                    result[c] = util.nearest_octave(result[c], octave_step)
+                    result[c] = util.nearest_octave(result[c], octave_step, si)
                 except KeyError as e:
                     cols = ', '.join(result.columns)
                     raise KeyError(f'No column named "{c}". Valid columns are {cols}.') from e
@@ -191,6 +200,18 @@ class Dataset:
 
         return self.load(_load_dpoae_th,
                           '**/*dpoae_io th.csv',
+                          parse_psi_filename, **kwargs)
+
+    def load_dpgram(self, **kwargs):
+        '''
+        Load DPgram
+
+        Returns
+        -------
+        df : pandas DataFrame indexed by F2 frequency and level.
+        '''
+        return self.load(lambda x: pd.read_csv(x),
+                          '**/*dpgram.csv',
                           parse_psi_filename, **kwargs)
 
     def load_abr_io(self, level=None, **kwargs):
