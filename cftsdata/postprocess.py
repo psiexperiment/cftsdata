@@ -1,3 +1,4 @@
+import datetime as dt
 import hashlib
 import json
 import shutil
@@ -127,40 +128,58 @@ def zip_unrated_abr_data():
     parser.add_argument('-p', '--path', type=Path)
     parser.add_argument('-s', '--subpath', type=str)
     parser.add_argument('-v', '--verbose', action='store_true')
-    parser.add_argument('rater', type=str, nargs='+')
+    parser.add_argument('-x', '--exclude', type=str, nargs='*', default=[])
+    parser.add_argument('-d', '--min-date', type=str)
+    parser.add_argument('raters', type=str, nargs='+')
     parser.add_argument('output', type=Path)
     args = parser.parse_args()
+
+    exclude_folders = set()
+    for filename in args.exclude:
+        for name in zipfile.ZipFile(filename).namelist():
+            if name.endswith('average waveforms.csv'):
+                exclude_folders.add(Path(name).parent.stem)
+
     dataset = Dataset(ephys_path=args.path, subpath=args.subpath)
 
     freqs = dataset.load_abr_frequencies(include_dataset=True)
-    all_datasets = set((r['dataset'], r['frequency']) for _, r in freqs.iterrows())
+    dataset_map = {r['dataset'].stem: r['dataset'] for _, r in freqs.iterrows()}
+    all_datasets = set((r['dataset'].stem, r['frequency']) for _, r in freqs.iterrows())
 
+    if args.min_date is not None:
+        min_date = dt.datetime.strptime(args.min_date, '%Y%m%d')
+        all_datasets = set((d, f) for d, f in all_datasets if dt.datetime.strptime(d[:8], '%Y%m%d') > min_date)
+
+    # Filter out datasets that are already rated by one of the raters
     rated_datasets = set()
-    for rater in args.rater:
+    for rater in args.raters:
         th = dataset.load_abr_th(rater, include_dataset=True)
-        rated_datasets |= set((r['dataset'], r['frequency']) for _, r in th.iterrows())
-
+        rated_datasets |= set((r['dataset'].stem, r['frequency']) for _, r in th.iterrows())
     unrated_datasets = all_datasets - rated_datasets
     unrated_folders = set(ds[0] for ds in unrated_datasets)
+
+    include_folders = unrated_folders - exclude_folders
+    include_folders = [dataset_map[n] for n in include_folders]
     if args.verbose:
         print(f'Found {len(unrated_datasets)} frequencies in '
-              f'{len(unrated_folders)} experiments to process.')
-        for folder in sorted(unrated_folders):
+              f'{len(unrated_folders)} experiments to process. ' 
+              f'Excluding {len(include_folders)} from final zip folder.')
+        for folder in sorted(include_folders):
             print(f' • {folder}')
 
-    if len(unrated_folders):
-        _zip_abr_folders(unrated_folders, args.output, dataset.ephys_path,
-                         args.rater)
+    if len(include_folders):
+        _zip_abr_folders(include_folders, args.output, dataset.ephys_path, args.raters)
 
 
-def _zip_abr_folders(folders, output, relative_path, rater=''):
+def _zip_abr_folders(folders, output, relative_path, raters=None):
+    if raters is None:
+        raters = ['']
+    glob_patterns = [
+        '*average waveforms.csv',
+        '*ABR processing settings.json',
+    ] + [f'*{r}-analyzed.txt' for r in raters]
     with zipfile.ZipFile(output, 'w') as fh:
         for folder in folders:
-            glob_patterns = [
-                f'*{rater}-analyzed.txt',
-                '*average waveforms.csv',
-                '*ABR processing settings.json',
-            ]
             for pattern in glob_patterns:
                 for filename in folder.glob(pattern):
                     fh.write(filename, str(filename.relative_to(relative_path)))
