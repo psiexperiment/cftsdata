@@ -115,6 +115,28 @@ class DPOAEFile(Recording):
         data['dp_end'] = ts_end
         return data
 
+    def iter_segments(self):
+        for _, row in self.results.iterrows():
+            lb = row['dp_start']
+            ub = row['dp_end']
+            if ub < lb:
+                log.warning('Incomplete DPOAE segment')
+                continue
+            segment = self.system_microphone.get_segment(lb, 0, ub-lb, allow_partial=True)
+            yield row, segment
+
+    def get_segment(self, f2_frequency, f2_level, microphone='system_microphone'):
+        rows = self.results.query('(f2_frequency == @f2_frequency) & (f2_level == @f2_level)')
+        if len(rows) != 1:
+            raise ValueError('More than one row matches')
+        row = rows.iloc[0]
+        lb = row['dp_start']
+        ub = row['dp_end']
+        if ub < lb:
+            raise ValueError('Incomplete DPOAE segment')
+        mic = getattr(self, microphone)
+        return mic.get_segment(lb, 0, ub-lb, allow_partial=True)
+
 
 def load(filename):
     return DPOAEFile(filename)

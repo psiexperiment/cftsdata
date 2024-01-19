@@ -33,10 +33,7 @@ def _process_file(fh, cb):
     '''
     fs = fh.system_microphone.fs
     ramp_time = fh.get_setting('primary_tone_rise_time')
-    n_time = fh.get_setting('n_time')
-    n_fft = fh.get_setting('n_fft')
     window = fh.get_setting('response_window')
-    f2_f1_ratio = fh.get_setting('f2_f1_ratio')
 
     n_window = window * fs
     n_trim = (ramp_time * 4) * fs
@@ -52,26 +49,16 @@ def _process_file(fh, cb):
     n_step = int(step * fs)
 
     cal = fh.system_microphone.get_calibration()
-
     psd = {}
     measured = {}
     f2_prev = None
-    for i, row in fh.results.iterrows():
+    for i, (row, s) in enumerate(fh.iter_segments()):
         cb(i / len(fh.results))
-        lb = row['dp_start']
-        ub = row['dp_end']
-
-        if ub < lb:
-            log.warning('Incomplete DPOAE segment')
-            continue
-
         f2 = row['f2_frequency']
         f1 = row['f1_frequency']
         l2 = row['f2_level']
         dp = 2 * f1 - f2
         nf_freq = np.array([-2, -1, 1, 2]) * resolution + dp
-
-        s = fh.system_microphone.get_segment(lb, 0, ub-lb, allow_partial=True)
         s = s.values[n_trim:]
 
         m_set = []
