@@ -240,9 +240,15 @@ class Dataset:
                           parse_psi_filename,
                           **kwargs)
 
-    def load_abr_waveforms(self, **kwargs):
+    def load_abr_waveforms(self, frequency=None, level=None, **kwargs):
         def _load_abr_waveforms(x):
+            nonlocal frequency
+            nonlocal level
             df = load_abr_waveforms(x)
+            if frequency is not None:
+                df = df.xs(frequency, level='frequency')
+            if level is not None:
+                df = df.xs(level, level='level')
             df = df.stack().rename('signal').reset_index()
             return df.rename(columns={'time': 'timepoint'})
         return self.load(_load_abr_waveforms,
