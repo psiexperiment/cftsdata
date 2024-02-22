@@ -38,7 +38,7 @@ def parse_psi_filename(filename):
     try:
         groups = P_PSI_FILENAME.match(filename.stem).groupdict()
         groups['datetime'] = dt.datetime.strptime(groups['datetime'], '%Y%m%d-%H%M%S')
-        groups['date'] = groups['datetime'].date()
+        groups['date'] = pd.to_datetime(groups['datetime'].date())
         groups['time'] = groups['datetime'].time()
         return groups
     except AttributeError:
