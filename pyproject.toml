@@ -17,7 +17,7 @@ maintainers = [
 dependencies = [
     "psidata[zarr-backend]",
 	"psiaudio",
-    "jsonpath-ng",
+    "jmespath",
 ]
 dynamic = ["version"]
 

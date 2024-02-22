@@ -5,8 +5,10 @@ import os
 from pathlib import Path
 import zipfile
 
-from jsonpath_ng import parse
+import jmespath
 import pandas as pd
+import yaml
+
 from psiaudio import util
 
 from cftsdata.abr import load_abr_analysis
@@ -114,20 +116,62 @@ class Dataset:
         return self.load_raw(lambda x: {}, filename_parser=parse_psi_filename,
                              **kwargs)
 
-    def load_raw_json(self, filename, json_path, etype=None, **kwargs):
-        '''
-        Load value from JSON file saved to raw data
-        '''
-        expr = parse(json_path)
+    def load_csv_header(self, filename, index_col=0, etype=None, **kwargs):
         def cb(zip_filename):
-            nonlocal expr
             nonlocal filename
             with zipfile.ZipFile(zip_filename) as fh_zip:
                 with fh_zip.open(filename) as fh:
-                    result = expr.find(json.load(fh))
-                    if len(result) > 1:
-                        raise ValueError(f'More than one match found for path "{json_path}"')
-                    return {str(result[0].full_path): result[0].value}
+                    return pd.read_csv(fh, nrows=1, index_col=index_col).iloc[0].to_dict()
+        return self.load_raw(cb, etype, **kwargs)
+
+    def load_raw_jmes(self, filename, query, etype=None, file_format=None,
+                      **kwargs):
+        '''
+        Load value from JSON or YAML file saved to the raw data zipfile
+
+        Parameters
+        ----------
+        filename : str
+            Name of file stored in zipfile to query (e.g., `io.json`,
+            `final.preferences`).
+        query : dict
+            Mapping of result names to the corresponding JMES query.
+        etype : {None, str}
+            If specified, filter datasets by those that match the experiment
+            type (e.g., abr_io).
+        file_format : {None, 'json', 'yaml'}
+            File format. If None, will make a best guess based on the filename
+            ending.
+
+        Examples
+        --------
+        Load the channel used for the starship A primary output.
+        >>> ds.load_raw_jmes('io.json', {'primary_output': 'output.starship_A_primary.channel'})
+        '''
+        c_query = {n: jmespath.compile(q) for n, q in query.items()}
+        if file_format is None:
+            if filename.endswith('.json'):
+                file_format = 'json'
+            elif filename.endswith('.yaml'):
+                file_format = 'yaml'
+            elif filename.endswith('.preferences'):
+                file_format = 'yaml'
+            else:
+                raise ValueError(f'Could not determine file format for {filename}')
+        if file_format not in ('json', 'yaml'):
+            raise ValueError(f'Invalid file format {file_format}')
+
+        def cb(zip_filename):
+            nonlocal c_query
+            nonlocal filename
+            nonlocal file_format
+            with zipfile.ZipFile(zip_filename) as fh_zip:
+                with fh_zip.open(filename) as fh:
+                    if file_format == 'json':
+                        text = json.load(fh)
+                    elif file_format == 'yaml':
+                        text = yaml.load(fh, loader=yaml.Loader)
+                    return {n: q.search(text) for n, q in c_query.items()}
         return self.load_raw(cb, etype, **kwargs)
 
     def load(self, cb, glob, filename_parser=None, data_path=None,
