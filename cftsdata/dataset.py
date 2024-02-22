@@ -381,12 +381,22 @@ class Dataset:
                          '**/*efr_ram*stimulus levels.csv',
                          parse_psi_filename, **kwargs)
 
-    def load_int_memr(self, **kwargs):
-        def _load_int_memr(x):
+    def load_memr_system(self, etype='memr', **kwargs):
+        query = {
+            'elicitor': "values(output)[?outputs[?name == 'elicitor_secondary']].name | [0]",
+            'probe': "values(output)[?outputs[?name == 'probe_primary']].name | [0]",
+        }
+        return self.load_raw_jmes('io.json', query, etype=etype)
+
+    def load_memr_int(self, repeat=None, **kwargs):
+        def _load_memr_int(x):
+            nonlocal repeat
             df = pd.read_csv(x, index_col=['repeat', 'elicitor_level'])
+            if repeat is not None:
+                df = df.query('repeat == @repeat')
             df.columns.name = 'frequency'
             df.columns = df.columns.astype('f')
-            return df.stack().reset_index()
-        return self.load(_load_int_memr,
+            return df.stack().rename('amplitude').reset_index()
+        return self.load(_load_memr_int,
                          '**/*memr_interleaved_click MEMR.csv',
                          parse_psi_filename, **kwargs)
