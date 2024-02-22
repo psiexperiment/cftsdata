@@ -289,12 +289,18 @@ class Dataset:
             nonlocal frequency
             nonlocal level
             df = load_abr_waveforms(x)
-            if frequency is not None:
-                df = df.xs(frequency, level='frequency')
-            if level is not None:
-                df = df.xs(level, level='level')
-            df = df.stack().rename('signal').reset_index()
-            return df.rename(columns={'time': 'timepoint'})
+            try:
+                if frequency is not None:
+                    df = df.xs(frequency, level='frequency', drop_level=False)
+                if level is not None:
+                    df = df.xs(level, level='level', drop_level=False)
+                return df.stack() \
+                    .rename('signal') \
+                    .reset_index() \
+                    .rename(columns={'time': 'timepoint'})
+            except KeyError:
+                return pd.DataFrame()
+
         return self.load(_load_abr_waveforms,
                          '**/*ABR average waveforms.csv',
                          parse_psi_filename,
