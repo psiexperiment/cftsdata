@@ -30,12 +30,17 @@ def process_file(filename, cb, reprocess=False):
         fh = IEC(filename)
 
         epochs = fh.get_epochs(cb=cb)
-        cal = fh.hw_ai.get_calibration()
+        try:
+            cal = fh.hw_ai.get_calibration()
+        except KeyError:
+            from psiaudio import calibration
+            cal = calibration.FlatCalibration.as_attenuation()
+
         freq_start = fh.get_setting('hw_ao_chirp_start_frequency')
         freq_end = fh.get_setting('hw_ao_chirp_end_frequency')
         duration = fh.get_setting('hw_ao_chirp_duration')
-        window = fh.get_setting('hw_ao_chirp_window')
-        equalize = fh.get_setting('hw_ao_chirp_equalize')
+        window = fh.get_setting('hw_ao_chirp_window', 'boxcar')
+        equalize = fh.get_setting('hw_ao_chirp_equalize', False)
         levels = fh.epoch_metadata['hw_ao_chirp_level'].unique()
 
         if equalize:
