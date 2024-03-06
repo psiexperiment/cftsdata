@@ -228,6 +228,14 @@ class Dataset:
             df = pd.DataFrame(result)
         return df
 
+    def load_iec_psd(self, **kwargs):
+        return self.load(
+            lambda x: pd.read_csv(x),
+            '**/*inear_speaker_calibration_chirp psd.csv',
+            parse_psi_filename,
+            **kwargs
+        )
+
     def load_dpoae_io(self, **kwargs):
         return self.load(lambda x: pd.read_csv(x),
                           '**/*dpoae_io io.csv',
