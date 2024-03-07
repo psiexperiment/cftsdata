@@ -18,7 +18,7 @@ expected_suffixes = [
 ]
 
 
-def process_file(filename, cb='tqdm', reprocess=False, start_delay=1,
+def process_file(filename, manager, start_delay=1,
                  analysis_window=10, segment_duration=60):
     '''
     {STANDARD_PARAMS}
@@ -31,11 +31,7 @@ def process_file(filename, cb='tqdm', reprocess=False, start_delay=1,
         large, so don't set it to a very large number or you'll run out of
         memory.
     '''
-    manager = DatasetManager(filename)
-    if not reprocess and manager.is_processed(expected_suffixes):
-        return
-
-    with manager.create_cb(cb) as cb:
+    with manager.create_cb() as cb:
         fh = Recording(filename)
         parameters = fh.get_parameters()
         noise_fh = float(parameters['exposure_bandlimited_noise_fh'])
@@ -149,18 +145,10 @@ def process_file(filename, cb='tqdm', reprocess=False, start_delay=1,
         manager.save_df(mic_rms_spl, 'SPL over time.csv')
 
 
-def main_file():
-    import argparse
-    parser = argparse.ArgumentParser('Summarize noise exposure file')
-    parser.add_argument('filename')
-    parser.add_argument('--reprocess', action='store_true')
-    args = parser.parse_args()
-    process_file(args.filename, reprocess=args.reprocess)
-
-
 def main_folder():
     import argparse
     parser = argparse.ArgumentParser('Summarize noise exposure data in folder')
     add_default_options(parser)
     args = vars(parser.parse_args())
-    process_files('**/*noise_exposure*', process_file, **args)
+    process_files('**/*noise_exposure*', process_file,
+                  expected_suffixes=expected_suffixes, **args)

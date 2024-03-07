@@ -18,10 +18,21 @@ from psiaudio import util
 
 from . import abr
 
-from .util import add_default_options, DatasetManager, process_files
+from .util import add_default_options, process_files
 
 
 COLUMNS = ['frequency', 'level', 'polarity']
+
+
+abr_expected_suffixes = [
+    'average waveforms.csv',
+    'processing settings.json',
+    'experiment settings.json',
+    'waveforms.pdf',
+    'eeg spectrum.pdf',
+    'eeg spectrum.csv',
+    'eeg rms.json',
+]
 
 
 def load_abr_waveforms(filename):
@@ -31,46 +42,6 @@ def load_abr_waveforms(filename):
 	l = df.columns.get_level_values(1).astype('float')
 	df.columns = [f, l]
 	return df.T
-
-
-def get_file_template(filename, offset, duration, filter_settings, n_epochs,
-                      prefix='ABR', simple_filename=True,
-                      include_filename=True):
-
-    if include_filename:
-        prefix = f'{filename.stem} {prefix}'
-    if simple_filename:
-        return f'{prefix}'
-
-    base_string = f'{prefix}{offset*1e3:.1f}ms to {(offset+duration)*1e3:.1f}ms'
-
-    if n_epochs:
-        base_string = f'{base_string} {n_epochs} averages'
-
-    fh = abr.load(filename)
-    if filter_settings == 'saved':
-        settings = _get_filter(fh)
-        if not settings['digital_filter']:
-            filter_string = 'no filter'
-        else:
-            lb = settings['lb']
-            ub = settings['ub']
-            filter_string = f'{lb:.0f}Hz to {ub:.0f}Hz filter'
-    elif filter_settings is None:
-        filter_string = 'no filter'
-    else:
-        lb = filter_settings['lb']
-        ub = filter_settings['ub']
-        filter_string = f'{lb:.0f}Hz to {ub:.0f}Hz filter'
-        order = filter_settings['order']
-        if order != 1:
-            filter_string = f'{order:.0f} order {filter_string}'
-
-    file_string = f'{base_string} with {filter_string}'
-    if suffix is not None:
-        file_string = f'{file_string} {suffix}'
-
-    return f'{file_string}'
 
 
 def _get_filter(fh):
@@ -149,13 +120,11 @@ def plot_waveforms_cb(epochs_mean, filename, name):
     figure.savefig(filename)
 
 
-def process_file(filename, offset=-1e-3, duration=10e-3,
+def process_file(filename, manager, offset=-1e-3, duration=10e-3,
                  filter_settings='saved', n_epochs='auto',
-                 simple_filename=True, export_single_trial=False, cb=None,
-                 file_template=None, target_fs=12.5e3, analysis_window=None,
-                 latency_correction=0, gain_correction=1, debug_mode=False,
-                 plot_waveforms_cb=plot_waveforms_cb, reprocess=False,
-                 eeg_duration=2.5):
+                 target_fs=12.5e3, analysis_window=None, latency_correction=0,
+                 gain_correction=1, debug_mode=False,
+                 plot_waveforms_cb=plot_waveforms_cb, eeg_duration=2.5):
     '''
     Extract ABR epochs, filter and save result to CSV files
 
@@ -164,6 +133,8 @@ def process_file(filename, offset=-1e-3, duration=10e-3,
     filename : path
         Path to ABR experiment. If it's a set of ABR experiments, epochs across
         all experiments will be combined for the analysis.
+    manager : instance of DatasetManager
+        DatasetManager for handling data storage and review.
     offset : sec
         The start of the epoch to extract, in seconds, relative to tone pip
         onset. Negative values can be used to extract a prestimulus baseline.
@@ -181,16 +152,6 @@ def process_file(filename, offset=-1e-3, duration=10e-3,
         If None, all epochs will be used. If 'auto', use the value defined at
         acquisition time. If integer, will limit the number of epochs per
         frequency and level to this number.
-    simple_filename : bool
-        If True, do not embed settings used for processing data in filename.
-    export_single_trial : bool
-        If True, export single trials.
-    cb : {None, 'tqdm', callable}
-        If a callable, takes one value (the estimate of percent done as a
-        fraction). If 'tqdm', progress will be printed to the console.
-    file_template : {None, str}
-        Template that will be used to determine names (and path) of processed
-        files.
     target_fs : float
         Closest sampling rate to target
     analysis_window : Ignored
@@ -242,31 +203,10 @@ def process_file(filename, offset=-1e-3, duration=10e-3,
         if n_epochs == 'auto':
             n_epochs = fh.get_setting('averages')
 
-    if file_template is None:
-        file_template = get_file_template(
-            filename, offset, duration, filter_settings, n_epochs,
-            simple_filename=simple_filename, include_filename=True)
-
-    manager = DatasetManager(filename, file_template=file_template)
-    files = [
-        'average waveforms.csv',
-        'processing settings.json',
-        'experiment settings.json',
-        'waveforms.pdf',
-        'eeg spectrum.pdf',
-        'eeg spectrum.csv',
-        'eeg rms.json',
-    ]
-    if export_single_trial:
-        files.append('individual waveforms.csv')
-
-    if not reprocess and manager.is_processed(files):
-        return False
-
     # Load the epochs. The callbacks for loading the epochs return a value in
     # the range 0 ... 1. Since this only represents "half" the total work we
     # need to do, rescale to the range 0 ... 0.5.
-    with manager.create_cb(cb) as cb:
+    with manager.create_cb() as cb:
         def cb_rescale(frac):
             nonlocal cb
             cb(frac * 0.5)
@@ -322,14 +262,8 @@ def process_file(filename, offset=-1e-3, duration=10e-3,
             .write_text(json.dumps(md, indent=2))
 
         epoch_mean.T.to_csv(manager.get_proc_filename('average waveforms.csv'))
-        cb(0.8)
+        cb(0.85)
 
-        if export_single_trial:
-            epochs = add_trial(epochs)
-            epochs.columns.name = 'time'
-            epochs.T.to_csv(manager.get_proc_filename('individual waveforms.csv'))
-
-        cb(0.9)
         if plot_waveforms_cb is not None:
             plot_waveforms_cb(
                 epoch_mean,
@@ -365,56 +299,14 @@ def process_file(filename, offset=-1e-3, duration=10e-3,
     return True
 
 
-def main_file():
-    parser = argparse.ArgumentParser('Filter and summarize ABR data')
-
-    parser.add_argument('filenames', type=str,
-                        help='Filename', nargs='+')
-    parser.add_argument('--offset', type=float,
-                        help='Epoch offset',
-                        default=-0.001)
-    parser.add_argument('--duration', type=float,
-                        help='Epoch duration',
-                        default=0.01)
-    parser.add_argument('--filter-lb', type=float,
-                        help='Highpass filter cutoff',
-                        default=None)
-    parser.add_argument('--filter-ub', type=float,
-                        help='Lowpass filter cutoff',
-                        default=None)
-    parser.add_argument('--order', type=float,
-                        help='Filter order',
-                        default=None)
-    parser.add_argument('--reprocess',
-                        help='Redo existing results',
-                        action='store_true')
-    args = parser.parse_args()
-
-    if args.filter_lb is not None or args.filter_ub is not None:
-        filter_settings = {
-            'lb': args.filter_lb,
-            'ub': args.filter_ub,
-            'order': args.order,
-        }
-    else:
-        filter_settings = None
-    process_files(
-        filenames=args.filenames,
-        offset=args.offset,
-        duration=args.duration,
-        filter_settings=filter_settings,
-        reprocess=args.reprocess,
-        cb='tqdm',
-    )
-
-
 def main_folder():
     parser = argparse.ArgumentParser('Filter and summarize ABR files in folder')
     add_default_options(parser)
     args = vars(parser.parse_args())
     fn = partial(process_file, filter_settings='saved', offset=-0.001,
                  duration=0.01)
-    process_files(glob_pattern='**/*abr_io*', fn=fn, **args)
+    process_files(glob_pattern='**/*abr_io*', fn=fn,
+                  expected_suffixes=abr_expected_suffixes, **args)
 
 
 def main_gui():

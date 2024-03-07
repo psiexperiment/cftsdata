@@ -18,14 +18,8 @@ expected_suffixes = [
 ]
 
 
-def process_file(filename, cb, reprocess=False):
-    manager = DatasetManager(filename)
-    if not reprocess and manager.is_processed(expected_suffixes):
-        return False
-
-    with manager.create_cb(cb) as cb:
-        manager.clear(expected_suffixes)
-
+def process_file(filename, manager):
+    with manager.create_cb() as cb:
         cb(0)
         fh = IEC(filename)
 
@@ -161,4 +155,4 @@ def main_folder():
     add_default_options(parser)
     args = vars(parser.parse_args())
     process_files('**/*inear_speaker_calibration_chirp*',
-                  process_file, **args)
+                  process_file, expected_suffixes=expected_suffixes, **args)

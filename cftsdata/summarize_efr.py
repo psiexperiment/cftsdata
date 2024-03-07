@@ -26,8 +26,8 @@ expected_suffixes = [
 ]
 
 
-def process_file(filename, cb='tqdm', reprocess=False, segment_duration=0.5,
-                 n_draw=128, n_bootstrap=100, efr_harmonics=5, target_fs=12500):
+def process_file(filename, manager, segment_duration=0.5, n_draw=128,
+                 n_bootstrap=100, efr_harmonics=5, target_fs=12500):
     '''
     Parameters
     ----------
@@ -42,11 +42,7 @@ def process_file(filename, cb='tqdm', reprocess=False, segment_duration=0.5,
         speeds up the bootstrap analyses. Be sure the target sampling rate is
         at least twice the maximum harmonic you want to analyze in the EFR data.
     '''
-    manager = DatasetManager(filename)
-    if not reprocess and manager.is_processed(expected_suffixes):
-        return False
-
-    with manager.create_cb(cb) as cb:
+    with manager.create_cb() as cb:
         fh = EFR(filename)
         n_segments = fh.get_setting('duration') / segment_duration
         if n_segments != int(n_segments):
@@ -263,5 +259,7 @@ def main_folder():
     parser = argparse.ArgumentParser('Summarize EFR in folder')
     add_default_options(parser)
     args = vars(parser.parse_args())
-    process_files(glob_pattern='**/*efr_ram*', fn=process_file, **args)
-    process_files(glob_pattern='**/*efr_sam*', fn=process_file, **args)
+    process_files(glob_pattern='**/*efr_ram*', fn=process_file,
+                  expected_suffixes=expected_suffixes, **args)
+    process_files(glob_pattern='**/*efr_sam*', fn=process_file,
+                  expected_suffixes=expected_suffixes, **args)

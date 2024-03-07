@@ -33,13 +33,32 @@ class CallbackManager:
 
 def add_default_options(parser):
     parser.add_argument('folder', type=str, help='Folder containing data')
-    parser.add_argument('--reprocess', action='store_true', help='Reprocess all data in folder')
+    parser.add_argument('-m', '--mode', choices=['process', 'reprocess', 'clear'], default='process')
     parser.add_argument('--halt-on-error', action='store_true', help='Stop on error?')
     parser.add_argument('--logging-level', type=str, help='Logging level')
 
 
-def process_files(glob_pattern, fn, folder, cb='tqdm', reprocess=False,
-                  halt_on_error=False, logging_level=None):
+def process_files(glob_pattern, fn, folder, cb='tqdm', mode='process',
+                  halt_on_error=False, logging_level=None,
+                  expected_suffixes=None):
+
+    def _process_file(filename):
+        nonlocal cb
+        nonlocal mode
+        nonlocal expected_suffixes
+
+        manager = DatasetManager(filename, cb=cb)
+        if mode == 'process' and manager.is_processed(expected_suffixes):
+            pass
+        elif mode == 'process' and not manager.is_processed(expected_suffixes):
+            fn(filename, manager=manager)
+            return True
+        elif mode == 'reprocess':
+            fn(filename, manager=manager)
+            return True
+        elif mode == 'clear':
+            manager.clear(expected_suffixes)
+            return True
 
     if logging_level is not None:
         logging.basicConfig(level=logging_level.upper())
@@ -52,8 +71,7 @@ def process_files(glob_pattern, fn, folder, cb='tqdm', reprocess=False,
     # folder is provided.
     folder = Path(folder).resolve()
     if fnmatch.fnmatch(folder.name, glob_pattern):
-        fn(folder, cb=cb, reprocess=reprocess)
-        print(f'Processed {folder}')
+        _process_file(folder)
         return
 
     for filename in folder.glob(glob_pattern):
@@ -67,7 +85,7 @@ def process_files(glob_pattern, fn, folder, cb='tqdm', reprocess=False,
         elif filename.suffix != '.zip':
             continue
         try:
-            if fn(filename, cb=cb, reprocess=reprocess):
+            if _process_file(filename):
                 processed.append(filename)
             else:
                 skipped.append(filename)
@@ -110,7 +128,7 @@ def cal_from_epl(name, base_path=None):
 
 class BaseDatasetManager:
 
-    def __init__(self, path, file_template=None):
+    def __init__(self, path, cb='tqdm', file_template=None):
         '''
         Manages paths of processed files given the relative path between the
         raw and processed directory structure.
@@ -119,15 +137,21 @@ class BaseDatasetManager:
         ----------
         path : {str, Path}
             Base path containing raw data
+        cb : str
+            Callback to use for showing processing status. See `get_cb` for
+            options.
         file_template : {None, str}
             If None, defaults to the filename stem
         '''
         self.path = Path(path)
+        self.cb = cb
         if file_template is None:
             file_template = f'{self.path.stem}'
         self.file_template = file_template
 
-    def create_cb(self, cb):
+    def create_cb(self, cb=None):
+        if cb is None:
+            cb = self.cb
         return CallbackManager(get_cb(cb, self.path.stem))
 
     def get_proc_path(self):

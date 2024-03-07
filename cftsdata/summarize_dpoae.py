@@ -92,13 +92,8 @@ def _process_file(fh, cb):
     return psd, measured
 
 
-def process_file_dpoae(filename, cb, reprocess=False):
-    manager = DatasetManager(filename)
-    if not reprocess and manager.is_processed(dpoae_expected_suffixes):
-        return False
-
-    with manager.create_cb(cb) as cb:
-        manager.clear(dpoae_expected_suffixes)
+def process_file_dpoae(filename, manager):
+    with manager.create_cb() as cb:
         fh = DPOAEFile(filename)
         freq = fh.results['f2_frequency'].unique()
         level = fh.results['f2_level'].unique()
@@ -173,13 +168,8 @@ def process_file_dpoae(filename, cb, reprocess=False):
     return True
 
 
-def process_file_dpgram(filename, cb, reprocess=False):
-    manager = DatasetManager(filename)
-    if not reprocess and manager.is_processed(dpgram_expected_suffixes):
-        return
-    manager.clear(dpgram_expected_suffixes)
-
-    with manager.create_cb(cb) as cb:
+def process_file_dpgram(filename, manager):
+    with manager.create_cb() as cb:
         fh = DPOAEFile(filename)
         freq = fh.results['f2_frequency'].unique()
         level = fh.results['f2_level'].unique()
@@ -260,7 +250,8 @@ def main_folder_dpoae():
     add_default_options(parser)
     args = vars(parser.parse_args())
     # This will exclude the dual_dpoae_io files.
-    process_files('**/*[!_]dpoae_io*', process_file_dpoae, **args)
+    process_files('**/*[!_]dpoae_io*', process_file_dpoae,
+                  expected_suffixes=dpoae_expected_suffixes, **args)
 
 
 def main_folder_dpgram():
@@ -268,4 +259,5 @@ def main_folder_dpgram():
     parser = argparse.ArgumentParser('Summarize DPgram data in folder')
     add_default_options(parser)
     args = vars(parser.parse_args())
-    process_files('**/*dpgram*', process_file_dpgram, **args)
+    process_files('**/*dpgram*', process_file_dpgram,
+                  expected_suffixes=dpgram_expected_suffixes, **args)

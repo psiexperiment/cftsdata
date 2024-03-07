@@ -243,13 +243,15 @@ def get_settings(fh):
     }
 
 
-def process_interleaved_file(filename, cb, reprocess=False, acoustic_delay=0.75e-3, **kwargs):
-    manager = DatasetManager(filename, **kwargs)
-    if not reprocess and manager.is_processed(int_expected_suffixes):
-        return
-    manager.clear(int_expected_suffixes)
-
-    with manager.create_cb(cb) as cb:
+def process_interleaved_file(filename, manager, acoustic_delay=0.75e-3,
+                             turntable_speed=1, **kwargs):
+    '''
+    Parameters
+    ----------
+    turntable_speed : {None, float}
+        If None, use value saved in settings.
+    '''
+    with manager.create_cb() as cb:
         fh = InterleavedMEMRFile(filename)
         # Load variables we need from the file
         probe_cal = fh.probe_microphone.get_calibration()
@@ -364,13 +366,8 @@ sim_expected_suffixes = [
     'elicitor PSD.pdf'
 ]
 
-def process_simultaneous_file(filename, cb, reprocess=False, **kwargs):
-    manager = DatasetManager(filename, **kwargs)
-    if not reprocess and manager.is_processed(sim_expected_suffixes):
-        return
-    manager.clear(sim_expected_suffixes)
-
-    with manager.create_cb(cb) as cb:
+def process_simultaneous_file(filename, manager, **kwargs):
+    with manager.create_cb() as cb:
         fh = SimultaneousMEMRFile(filename)
 
         probe_cal = fh.probe_microphone.get_calibration()
@@ -451,7 +448,9 @@ def main_simultaneous_folder():
     parser = argparse.ArgumentParser('Summarize simultaneous MEMR data in folder')
     add_default_options(parser)
     args = vars(parser.parse_args())
-    process_files(glob_pattern='**/*memr_simultaneous*', fn=process_simultaneous_file, **args)
+    process_files(glob_pattern='**/*memr_simultaneous*',
+                  fn=process_simultaneous_file,
+                  expected_suffixes=sim_expected_suffixes, **args)
 
 
 def main_interleaved_folder():
@@ -459,4 +458,6 @@ def main_interleaved_folder():
     parser = argparse.ArgumentParser('Summarize interleaved MEMR data in folder')
     add_default_options(parser)
     args = vars(parser.parse_args())
-    process_files(glob_pattern='**/*memr_interleaved*', fn=process_interleaved_file, **args)
+    process_files(glob_pattern='**/*memr_interleaved*',
+                  fn=process_interleaved_file,
+                  expected_suffixes=int_expected_suffixes, **args)
