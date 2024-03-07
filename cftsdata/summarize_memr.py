@@ -239,6 +239,7 @@ def get_settings(fh):
         'turntable_speed': fh.get_setting('max_turntable_speed'),
         'probe_starship': fh.get_setting('probe'),
         'elicitor_starship': fh.get_setting('elicitor'),
+        'trial_n': fh.get_setting('trial_n'),
     }
 
 
@@ -266,7 +267,11 @@ def process_interleaved_file(filename, cb, reprocess=False, acoustic_delay=0.75e
 
         # Load the turntable speed and find maximum across entire repeat.
         speed = fh.get_speed().max(axis=1)
-        valid = speed < settings['turntable_speed']
+
+        # If turntable_speed is not set, load from the settings.
+        if turntable_speed is None:
+            turntable_speed = settings['turntable_speed']
+        valid = speed < turntable_speed
 
         # Now, load the repeats. This essentially segments the epochs DataFrame
         # into the individual elicitor and probe repeat segments.
@@ -296,7 +301,7 @@ def process_interleaved_file(filename, cb, reprocess=False, acoustic_delay=0.75e
         elicitor_level = elicitor_level.reset_index(drop=True)
 
         # Now, extract the probe window and the silence following the probe
-        # window. The silence will (potentially) be used to estimate artifacts. 
+        # window. The silence will (potentially) be used to estimate artifacts.
         probe = fh.get_probe()
         silence = fh.get_silence()
 
@@ -304,7 +309,12 @@ def process_interleaved_file(filename, cb, reprocess=False, acoustic_delay=0.75e
         probe_spl = probe_cal.get_db(util.psd_df(probe, fs=fh.probe_microphone.fs, detrend='constant'))
         silence_spl = probe_cal.get_db(util.psd_df(silence, fs=fh.probe_microphone.fs, detrend='constant'))
 
-        probe_valid = probe.loc[valid]
+        trial_n = int(settings['trial_n'] / 2)
+        if (trial_n * 2) != settings['trial_n']:
+            raise ValueError('Unequal number of positive and negative polarity trials')
+
+        grouping = ['repeat', 'elicitor_level', 'elicitor_polarity']
+        probe_valid = probe.loc[valid].groupby(grouping).apply(lambda x: x.iloc[:trial_n])
         probe_valid_mean = probe_valid.groupby(['repeat', 'elicitor_level']).mean()
         probe_valid_psd_mean = util.psd_df(probe_valid_mean, fh.probe_microphone.fs)
         memr_db = util.db(probe_valid_psd_mean.loc[1:] / probe_valid_psd_mean.loc[0])
