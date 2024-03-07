@@ -133,22 +133,28 @@ class InterleavedMEMRFile(BaseMEMRFile):
         return repeats.loc[:, m].reset_index(['probe_t0', 't0'], drop=True)
 
     @lru_cache(maxsize=MAXSIZE)
-    def get_probe(self, acoustic_delay=0.75e-3, signal_name='probe_microphone'):
+    def get_probe(self, acoustic_delay=0.75e-3, signal_name='probe_microphone',
+                  trim=0):
         probe_delay = self.get_setting('probe_delay')
         probe_duration = self.get_setting('probe_duration')
-        probe_lb = acoustic_delay + probe_delay
-        probe_ub = acoustic_delay + probe_delay + probe_duration
+        probe_lb = acoustic_delay + probe_delay + trim
+        probe_ub = acoustic_delay + probe_delay + probe_duration - trim
+        if probe_ub <= probe_lb:
+            raise ValueError('Trim value set too high')
 
         repeats = self._get_repeats(signal_name=signal_name)
         m = (repeats.columns >= probe_lb) & (repeats.columns < probe_ub)
         return repeats.loc[:, m].reset_index(['probe_t0', 't0'], drop=True)
 
     @lru_cache(maxsize=MAXSIZE)
-    def get_silence(self, acoustic_delay=0.75e-3, signal_name='probe_microphone'):
+    def get_silence(self, acoustic_delay=0.75e-3,
+                    signal_name='probe_microphone', trim=0):
         probe_delay = self.get_setting('probe_delay')
         probe_duration = self.get_setting('probe_duration')
-        silence_lb = acoustic_delay + probe_delay + probe_duration
-        silence_ub = silence_lb + probe_duration
+        silence_lb = acoustic_delay + probe_delay + probe_duration + trim
+        silence_ub = silence_lb + probe_duration - trim
+        if silence_ub <= silence_lb:
+            raise ValueError('Trim value set too high')
 
         repeats = self._get_repeats(signal_name=signal_name)
         m = (repeats.columns >= silence_lb) & (repeats.columns < silence_ub)
