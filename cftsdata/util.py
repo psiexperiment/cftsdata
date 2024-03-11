@@ -232,5 +232,6 @@ class SplitDatasetManager(BaseDatasetManager):
         return self.proc_dir / self.path.parent.relative_to(self.raw_dir) / self.path.stem
 
 
-# TODO: How do we make this so that it is a bit more clever about selecting the correct manager based on preference?
+# TODO: How do we make this so that it is a bit more clever about selecting the
+# correct manager based on preference?
 DatasetManager = CombinedDatasetManager

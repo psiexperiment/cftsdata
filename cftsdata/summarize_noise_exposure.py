@@ -59,7 +59,6 @@ def process_file(filename, manager, start_delay=1,
 
         i_start = int(round(start_delay * fs))
         n_segments = (n_samples - i_start) // n_segment_samples
-
         b, a = signal.iirfilter(2, 100, None, None, 'highpass', ftype='butter', fs=fs)
 
         mic_mean = []
