@@ -134,6 +134,8 @@ def zip_unrated_abr_data():
     parser.add_argument('output', type=Path)
     args = parser.parse_args()
 
+    # Make a list of folders already in an existing zip archive so that we can
+    # avoid adding them to the new zip archive.
     exclude_folders = set()
     for filename in args.exclude:
         for name in zipfile.ZipFile(filename).namelist():
@@ -162,8 +164,8 @@ def zip_unrated_abr_data():
     include_folders = [dataset_map[n] for n in include_folders]
     if args.verbose:
         print(f'Found {len(unrated_datasets)} frequencies in '
-              f'{len(unrated_folders)} experiments to process. ' 
-              f'Excluding {len(include_folders)} from final zip folder.')
+              f'{len(unrated_folders)} experiments to process. '
+              f'Excluding {len(exclude_folders)} from final zip folder.')
         for folder in sorted(include_folders):
             print(f' • {folder}')
 
