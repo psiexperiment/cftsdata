@@ -99,7 +99,7 @@ class DPOAEFile(Recording):
         data = getattr(self, 'dpoae_store')
         data = data.rename(columns=dpoae_renamer)
         m = data['capture'].diff() == 0
-        print(f'Dropping {m.mean()*100:.0f}% of trials since they are repeated averages')
+        log.info(f'Dropping {m.mean()*100:.0f}% of trials since they are repeated averages')
         data = data.loc[~m]
 
         # Add in the start/stop time of the actual stimulus itself. The
