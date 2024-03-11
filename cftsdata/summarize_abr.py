@@ -25,13 +25,13 @@ COLUMNS = ['frequency', 'level', 'polarity']
 
 
 abr_expected_suffixes = [
-    'average waveforms.csv',
-    'processing settings.json',
-    'experiment settings.json',
-    'waveforms.pdf',
-    'eeg spectrum.pdf',
-    'eeg spectrum.csv',
-    'eeg rms.json',
+    'ABR average waveforms.csv',
+    'ABR processing settings.json',
+    'ABR experiment settings.json',
+    'ABR waveforms.pdf',
+    'ABR eeg spectrum.pdf',
+    'ABR eeg spectrum.csv',
+    'ABR eeg rms.json',
 ]
 
 
@@ -179,7 +179,7 @@ def process_file(filename, manager, offset=-1e-3, duration=10e-3,
     filename = Path(filename)
 
     # Cleanup settings so that it is JSON-serializable
-    settings.pop('cb')
+    settings.pop('manager')
     settings.pop('plot_waveforms_cb')
     settings['filename'] = str(settings['filename'])
     settings['creation_time'] = dt.datetime.now().isoformat()
@@ -256,18 +256,18 @@ def process_file(filename, manager, offset=-1e-3, duration=10e-3,
         epoch_mean.index = epoch_info.index
         epoch_mean.columns.name = 'time'
 
-        manager.get_proc_filename('processing settings.json') \
+        manager.get_proc_filename('ABR processing settings.json') \
             .write_text(json.dumps(settings, indent=2))
-        manager.get_proc_filename('experiment settings.json') \
+        manager.get_proc_filename('ABR experiment settings.json') \
             .write_text(json.dumps(md, indent=2))
 
-        epoch_mean.T.to_csv(manager.get_proc_filename('average waveforms.csv'))
+        epoch_mean.T.to_csv(manager.get_proc_filename('ABR average waveforms.csv'))
         cb(0.85)
 
         if plot_waveforms_cb is not None:
             plot_waveforms_cb(
                 epoch_mean,
-                manager.get_proc_filename('waveforms.pdf'),
+                manager.get_proc_filename('ABR waveforms.pdf'),
                 filename.stem
             )
 
@@ -286,12 +286,12 @@ def process_file(filename, manager, offset=-1e-3, duration=10e-3,
         axes.set_xlabel('Frequency (kHz)')
         axes.set_ylabel('PSD (dB re 1V)')
         axes.axvline(60, ls=':', color='k')
-        manager.save_fig(eeg_figure, 'eeg spectrum.pdf')
-        manager.save_dataframe(eeg_psd.rename('psd'), 'eeg spectrum.csv')
+        manager.save_fig(eeg_figure, 'ABR eeg spectrum.pdf')
+        manager.save_dataframe(eeg_psd.rename('psd'), 'ABR eeg spectrum.csv')
         manager.save_dict({
             'eeg_rms': util.rms(eeg.values),
             'eeg_n_averages': n_averages,
-        }, 'eeg rms.json')
+        }, 'ABR eeg rms.json')
 
         cb(1.0)
         plt.close('all')
