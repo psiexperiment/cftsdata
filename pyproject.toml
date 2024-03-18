@@ -18,6 +18,7 @@ dependencies = [
     "psidata[zarr-backend]",
 	"psiaudio",
     "jmespath",
+    "joblib",
 ]
 dynamic = ["version"]
 

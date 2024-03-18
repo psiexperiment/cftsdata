@@ -6,6 +6,8 @@ import json
 import os
 from pathlib import Path
 
+from joblib import Parallel, delayed
+
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as plt
 
@@ -36,11 +38,12 @@ def add_default_options(parser):
     parser.add_argument('-m', '--mode', choices=['process', 'reprocess', 'clear'], default='process')
     parser.add_argument('--halt-on-error', action='store_true', help='Stop on error?')
     parser.add_argument('--logging-level', type=str, help='Logging level')
+    parser.add_argument('--n-jobs', type=int, default=4)
 
 
 def process_files(glob_pattern, fn, folder, cb='tqdm', mode='process',
                   halt_on_error=False, logging_level=None,
-                  expected_suffixes=None):
+                  expected_suffixes=None, n_jobs=1):
 
     def _process_file(filename):
         nonlocal cb
@@ -59,6 +62,7 @@ def process_files(glob_pattern, fn, folder, cb='tqdm', mode='process',
         elif mode == 'clear':
             manager.clear(expected_suffixes)
             return True
+        return False
 
     if logging_level is not None:
         logging.basicConfig(level=logging_level.upper())
@@ -74,6 +78,7 @@ def process_files(glob_pattern, fn, folder, cb='tqdm', mode='process',
         _process_file(folder)
         return
 
+    jobs = []
     for filename in folder.glob(glob_pattern):
         if filename.suffix == '.md5':
             # Skip the MD5 checksum files
@@ -84,24 +89,35 @@ def process_files(glob_pattern, fn, folder, cb='tqdm', mode='process',
                 continue
         elif filename.suffix != '.zip':
             continue
-        try:
-            if _process_file(filename):
-                processed.append(filename)
-            else:
-                skipped.append(filename)
-        except KeyboardInterrupt:
-            # Don't capture this otherwise it just keeps continuing with the
-            # next file.
-            raise
-        except Exception as e:
-            if halt_on_error:
-                raise
-            errors.append((filename, e))
-            print(f'Error processing {filename}')
-        finally:
-            plt.close('all')
 
-    print(f'Processed {len(processed)} files with {len(errors)} errors. {len(skipped)} files were skipped.')
+        if n_jobs == 1:
+            try:
+                if _process_file(filename):
+                    processed.append(filename)
+                else:
+                    skipped.append(filename)
+            except KeyboardInterrupt:
+                # Don't capture this otherwise it just keeps continuing with the
+                # next file.
+                raise
+            except Exception as e:
+                if halt_on_error:
+                    raise
+                errors.append((filename, e))
+                print(f'Error processing {filename}')
+            finally:
+                plt.close('all')
+        else:
+            job = delayed(_process_file)(filename)
+            jobs.append(job)
+
+    if n_jobs == 1:
+        print(f'Processed {len(processed)} files with {len(errors)} errors. {len(skipped)} files were skipped.')
+    else:
+        result = Parallel(n_jobs=4)(jobs)
+        n_processed = sum(result)
+        n_skipped = len(result) - n_processed
+        print(f'Processed {n_processed} files. {n_skipped} files were skipped.')
 
 
 def add_trial(df, grouping):
