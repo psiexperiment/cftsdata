@@ -1,4 +1,5 @@
 import datetime as dt
+from functools import partial
 import json
 import re
 import os
@@ -56,6 +57,13 @@ def load_efr_level(filename, which='total'):
     else:
         raise ValueError(f'Unrecognized parameter for which: "{which}"')
     return result
+
+
+def load_memr(filename, repeat=None):
+    df = pd.read_csv(filename, index_col=['repeat', 'elicitor_level', 'frequency'])['amplitude']
+    if repeat is not None:
+        df = df.loc[repeat]
+    return df.reset_index()
 
 
 def coerce_frequency(columns, octave_step, si_prefix=''):
@@ -390,6 +398,9 @@ class Dataset:
                          parse_psi_filename, **kwargs)
 
     def load_memr_system(self, etype='memr', **kwargs):
+        '''
+        Load the outputs used for the probe and elicitor
+        '''
         query = {
             'elicitor': "values(output)[?outputs[?name == 'elicitor_secondary']].name | [0]",
             'probe': "values(output)[?outputs[?name == 'probe_primary']].name | [0]",
@@ -397,12 +408,11 @@ class Dataset:
         return self.load_raw_jmes('io.json', query, etype=etype)
 
     def load_memr_int(self, repeat=None, **kwargs):
-        def _load_memr_int(x):
-            nonlocal repeat
-            df = pd.read_csv(x, index_col=['repeat', 'elicitor_level', 'frequency'])['amplitude']
-            if repeat is not None:
-                df = df.loc[repeat]
-            return df.reset_index()
-        return self.load(_load_memr_int,
+        return self.load(partial(load_memr, repeat=repeat),
                          '**/*memr_interleaved_click MEMR.csv',
+                         parse_psi_filename, **kwargs)
+
+    def load_memr_sim(self, repeat=None, **kwargs):
+        return self.load(partial(load_memr, repeat=repeat),
+                         '**/*memr_simultaneous_chirp MEMR.csv',
                          parse_psi_filename, **kwargs)
