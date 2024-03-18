@@ -170,7 +170,7 @@ class Dataset:
                     if file_format == 'json':
                         text = json.load(fh)
                     elif file_format == 'yaml':
-                        text = yaml.load(fh, loader=yaml.Loader)
+                        text = yaml.safe_load(fh)
                     return {n: q.search(text) for n, q in c_query.items()}
         return self.load_raw(cb, etype, **kwargs)
 
