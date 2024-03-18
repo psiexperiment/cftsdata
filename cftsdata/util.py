@@ -38,7 +38,7 @@ def add_default_options(parser):
     parser.add_argument('-m', '--mode', choices=['process', 'reprocess', 'clear'], default='process')
     parser.add_argument('--halt-on-error', action='store_true', help='Stop on error?')
     parser.add_argument('--logging-level', type=str, help='Logging level')
-    parser.add_argument('--n-jobs', type=int, default=4)
+    parser.add_argument('--n-jobs', type=int, default=1)
 
 
 def process_files(glob_pattern, fn, folder, cb='tqdm', mode='process',
