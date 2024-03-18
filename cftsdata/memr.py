@@ -36,6 +36,12 @@ class BaseMEMRFile(Recording):
             raise ValueError(f'{base_path} is not a MEMR recording')
         super().__init__(base_path, setting_table)
 
+    def get_velocity(self, signal_name='turntable_linear_velocity'):
+        raise NotImplementedError
+
+    def get_speed(self, signal_name='turntable_linear_velocity'):
+        return np.abs(self.get_velocity(signal_name))
+
     @property
     def probe_fs(self):
         return self.probe_microphone.fs
@@ -71,7 +77,8 @@ class BaseMEMRFile(Recording):
         signal = getattr(self, signal_name)
         epochs = signal.get_epochs(
             self.memr_metadata, 0, self.trial_duration,
-            columns=columns, cb=cb).sort_index()
+            columns=columns, cb=cb).reset_index('elicitor_uuid', drop=True) \
+            .sort_index()
         if add_trial:
             dtype = epochs.columns.dtype
             # This is converting a float column index to an object index.
@@ -80,23 +87,44 @@ class BaseMEMRFile(Recording):
         return epochs
 
     @lru_cache(maxsize=MAXSIZE)
-    def _get_repeats(self, columns='auto', signal_name='probe_microphone'):
+    def get_repeats(self, columns='auto', signal_name='probe_microphone'):
         fs = getattr(self, signal_name).fs
         epochs = self.get_epochs(columns, signal_name).copy()
-        s_repeat = int(round(self.repeat_period * fs))
+
+        t_repeat = self.repeat_period * fs
+        s_repeat = max(1, int(round(t_repeat)))
+
         n_probe = self.get_setting('probe_n')
         t_probe = np.arange(s_repeat) / fs
 
         repeats = []
         keys = []
         for i in range(n_probe):
-            lb = s_repeat * i
+            lb = int(round(t_repeat * i))
             ub = lb + s_repeat
             repeat = epochs.iloc[:, lb:ub]
             repeat.columns.values[:] = t_probe
             repeats.append(repeat)
             keys.append((i, lb / fs))
         return pd.concat(repeats, keys=keys, names=['repeat', 'probe_t0'])
+
+    @lru_cache(maxsize=MAXSIZE)
+    def get_probe(self, acoustic_delay=0.75e-3, signal_name='probe_microphone',
+                  trim=0):
+        if isinstance(trim, tuple):
+            trim_lb, trim_ub = trim
+        else:
+            trim_lb = trim_ub = trim
+        probe_delay = self.get_setting('probe_delay')
+        probe_duration = self.get_setting('probe_duration')
+        probe_lb = acoustic_delay + probe_delay + trim_lb
+        probe_ub = acoustic_delay + probe_delay + probe_duration + trim_ub
+        if probe_ub <= probe_lb:
+            raise ValueError('Bad values for trim')
+
+        repeats = self.get_repeats(signal_name=signal_name)
+        m = (repeats.columns >= probe_lb) & (repeats.columns < probe_ub)
+        return repeats.loc[:, m].reset_index(['probe_t0', 't0'], drop=True)
 
     @property
     def trial_duration(self):
@@ -109,6 +137,10 @@ class BaseMEMRFile(Recording):
 
 class InterleavedMEMRFile(BaseMEMRFile):
 
+    @lru_cache(maxsize=MAXSIZE)
+    def get_velocity(self, signal_name='turntable_linear_velocity'):
+        return self.get_epochs(signal_name=signal_name)
+
     @property
     def trial_duration(self):
         return self.get_setting('probe_n') * self.get_setting('repeat_period')
@@ -118,32 +150,10 @@ class InterleavedMEMRFile(BaseMEMRFile):
         return self.get_setting('repeat_period')
 
     @lru_cache(maxsize=MAXSIZE)
-    def get_velocity(self, signal_name='turntable_linear_velocity'):
-        repeats = self._get_repeats(signal_name=signal_name)
-        return repeats.reset_index(['probe_t0', 't0'], drop=True)
-
-    def get_speed(self, signal_name='turntable_linear_velocity'):
-        return np.abs(self.get_velocity(signal_name))
-
-    @lru_cache(maxsize=MAXSIZE)
     def get_elicitor(self, signal_name='elicitor_microphone'):
-        repeats = self._get_repeats(signal_name=signal_name)
+        repeats = self.get_repeats(signal_name=signal_name)
         elicitor_delay = self.get_setting('elicitor_envelope_start_time')
         m = repeats.columns >= elicitor_delay
-        return repeats.loc[:, m].reset_index(['probe_t0', 't0'], drop=True)
-
-    @lru_cache(maxsize=MAXSIZE)
-    def get_probe(self, acoustic_delay=0.75e-3, signal_name='probe_microphone',
-                  trim=0):
-        probe_delay = self.get_setting('probe_delay')
-        probe_duration = self.get_setting('probe_duration')
-        probe_lb = acoustic_delay + probe_delay + trim
-        probe_ub = acoustic_delay + probe_delay + probe_duration - trim
-        if probe_ub <= probe_lb:
-            raise ValueError('Trim value set too high')
-
-        repeats = self._get_repeats(signal_name=signal_name)
-        m = (repeats.columns >= probe_lb) & (repeats.columns < probe_ub)
         return repeats.loc[:, m].reset_index(['probe_t0', 't0'], drop=True)
 
     @lru_cache(maxsize=MAXSIZE)
@@ -156,7 +166,7 @@ class InterleavedMEMRFile(BaseMEMRFile):
         if silence_ub <= silence_lb:
             raise ValueError('Trim value set too high')
 
-        repeats = self._get_repeats(signal_name=signal_name)
+        repeats = self.get_repeats(signal_name=signal_name)
         m = (repeats.columns >= silence_lb) & (repeats.columns < silence_ub)
         return repeats.loc[:, m].reset_index(['probe_t0', 't0'], drop=True)
 
@@ -167,13 +177,18 @@ class SimultaneousMEMRFile(BaseMEMRFile):
     def trial_duration(self):
         return self.get_setting('trial_duration')
 
+    @lru_cache(maxsize=MAXSIZE)
+    def get_velocity(self, signal_name='turntable_linear_velocity'):
+        repeats = self._get_repeats(signal_name=signal_name)
+        return repeats.reset_index(['probe_t0', 't0'], drop=True)
+
     @property
     def repeat_period(self):
         return 1 / self.get_setting('probe_rate')
 
     def get_repeats(self, columns='auto', signal_name='probe_microphone',
                     norm_window=None):
-        repeats = super()._get_repeats(columns, signal_name)
+        repeats = super().get_repeats(columns, signal_name)
 
         probe_n = self.get_setting('probe_n')
         onset = self.get_setting('elicitor_onset')
