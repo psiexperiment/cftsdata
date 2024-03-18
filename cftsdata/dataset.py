@@ -399,12 +399,10 @@ class Dataset:
     def load_memr_int(self, repeat=None, **kwargs):
         def _load_memr_int(x):
             nonlocal repeat
-            df = pd.read_csv(x, index_col=['repeat', 'elicitor_level'])
+            df = pd.read_csv(x, index_col=['repeat', 'elicitor_level', 'frequency'])['amplitude']
             if repeat is not None:
-                df = df.query('repeat == @repeat')
-            df.columns.name = 'frequency'
-            df.columns = df.columns.astype('f')
-            return df.stack().rename('amplitude').reset_index()
+                df = df.loc[repeat]
+            return df.reset_index()
         return self.load(_load_memr_int,
                          '**/*memr_interleaved_click MEMR.csv',
                          parse_psi_filename, **kwargs)
