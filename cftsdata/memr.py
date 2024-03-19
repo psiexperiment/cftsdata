@@ -179,7 +179,7 @@ class SimultaneousMEMRFile(BaseMEMRFile):
 
     @lru_cache(maxsize=MAXSIZE)
     def get_velocity(self, signal_name='turntable_linear_velocity'):
-        repeats = self._get_repeats(signal_name=signal_name)
+        repeats = self.get_repeats(signal_name=signal_name)
         return repeats.reset_index(['probe_t0', 't0'], drop=True)
 
     @property
