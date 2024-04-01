@@ -134,19 +134,22 @@ def zip_unrated_abr_data():
     parser.add_argument('output', type=Path)
     args = parser.parse_args()
 
+    def _get_id(dataset_path):
+        return Path(dataset_path).stem.split(' ')[0]
+
     # Make a list of folders already in an existing zip archive so that we can
     # avoid adding them to the new zip archive.
-    exclude_folders = set()
+    exclude_ids = set()
     for filename in args.exclude:
         for name in zipfile.ZipFile(filename).namelist():
             if name.endswith('average waveforms.csv'):
-                exclude_folders.add(Path(name).parent.stem)
+                exclude_ids.add(_get_id(name))
 
     dataset = Dataset(ephys_path=args.path, subpath=args.subpath)
 
     freqs = dataset.load_abr_frequencies(include_dataset=True)
-    dataset_map = {r['dataset'].stem: r['dataset'] for _, r in freqs.iterrows()}
-    all_datasets = set((r['dataset'].stem, r['frequency']) for _, r in freqs.iterrows())
+    dataset_map = {_get_id(r['dataset']): r['dataset'] for _, r in freqs.iterrows()}
+    all_datasets = set((_get_id(r['dataset']), r['frequency']) for _, r in freqs.iterrows())
 
     if args.min_date is not None:
         min_date = dt.datetime.strptime(args.min_date, '%Y%m%d')
@@ -156,16 +159,15 @@ def zip_unrated_abr_data():
     rated_datasets = set()
     for rater in args.raters:
         th = dataset.load_abr_th(rater, include_dataset=True)
-        rated_datasets |= set((r['dataset'].stem, r['frequency']) for _, r in th.iterrows())
-    unrated_datasets = all_datasets - rated_datasets
-    unrated_folders = set(ds[0] for ds in unrated_datasets)
+        rated_datasets |= set((_get_id(r['dataset']), r['frequency']) for _, r in th.iterrows())
 
-    include_folders = unrated_folders - exclude_folders
-    include_folders = [dataset_map[n] for n in include_folders]
+    unrated_ids = set(ds[0] for ds in (all_datasets - rated_datasets))
+    include_ids = unrated_ids - exclude_ids
+    include_folders = [dataset_map[n] for n in include_ids]
+
     if args.verbose:
-        print(f'Found {len(unrated_datasets)} frequencies in '
-              f'{len(unrated_folders)} experiments to process. '
-              f'Excluding {len(exclude_folders)} from final zip folder.')
+        print(f'Found {len(unrated_ids)} experiments to process. '
+              f'Excluding {len(exclude_ids)} from final zip folder.')
         for folder in sorted(include_folders):
             print(f' • {folder}')
 
