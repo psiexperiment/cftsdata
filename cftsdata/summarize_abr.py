@@ -60,10 +60,11 @@ def _get_filter(fh):
 def _get_epochs(fh, offset, duration, filter_settings, reject_ratio=None,
                 downsample=None, cb=None):
     # We need to do the rejects in this code so that we can obtain the
-    # information for generating the CSV files. Set reject_threshold to np.inf
-    # to ensure that nothing gets rejected.
+    # information for generating the CSV files. Set both reject_threshold and
+    # averages to None to ensure that all acquired trials are returned.
     kwargs = {'offset': offset, 'duration': duration, 'columns': COLUMNS,
-              'reject_threshold': np.inf, 'downsample': downsample, 'cb': cb}
+              'reject_threshold': None, 'averages': None, 'downsample':
+              downsample, 'cb': cb}
 
     if filter_settings is None:
         return fh.get_epochs(**kwargs)
@@ -121,7 +122,7 @@ def plot_waveforms_cb(epochs_mean, filename, name):
 
 
 def process_file(filename, manager, offset=-1e-3, duration=10e-3,
-                 filter_settings='saved', n_epochs='auto',
+                 filter_settings='saved', n_epochs='saved',
                  target_fs=12.5e3, analysis_window=None, latency_correction=0,
                  gain_correction=1, debug_mode=False,
                  plot_waveforms_cb=plot_waveforms_cb, eeg_duration=2.5):
@@ -148,8 +149,8 @@ def process_file(filename, manager, offset=-1e-3, duration=10e-3,
         filter settings that were saved in the ABR file. If a dictionary, must
         contain 'lb' (the lower bound of the passband in Hz) and 'ub' (the
         upper bound of the passband in Hz).
-    n_epochs : {None, 'auto', int, dict}
-        If None, all epochs will be used. If 'auto', use the value defined at
+    n_epochs : {None, 'saved', int, dict}
+        If None, all epochs will be used. If 'saved', use the value defined at
         acquisition time. If integer, will limit the number of epochs per
         frequency and level to this number.
     target_fs : float
@@ -200,7 +201,7 @@ def process_file(filename, manager, offset=-1e-3, duration=10e-3,
     settings['actual_fs'] = fh.eeg.fs / downsample
 
     if n_epochs is not None:
-        if n_epochs == 'auto':
+        if n_epochs == 'saved':
             n_epochs = fh.get_setting('averages')
 
     # Load the epochs. The callbacks for loading the epochs return a value in

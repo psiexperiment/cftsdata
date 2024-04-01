@@ -102,8 +102,8 @@ class ABRFile(Recording):
         return data.rename(columns=lambda x: x.replace('target_tone_', ''))
 
     def get_epochs(self, offset=0, duration=8.5e-3, detrend='constant',
-                   downsample=None, reject_threshold=None,
-                   reject_mode='absolute', columns='auto', averages=None,
+                   downsample=None, reject_threshold='saved',
+                   reject_mode='absolute', columns='auto', averages='saved',
                    cb=None, signal='eeg'):
         '''
         Extract event-related epochs from EEG
@@ -122,7 +122,7 @@ class ABRFile(Recording):
 
     def get_random_segments(self, n, offset=0, duration=8.5e-3,
                             detrend='constant', downsample=None,
-                            reject_threshold=None, reject_mode='absolute'):
+                            reject_threshold='saved', reject_mode='absolute'):
         '''
         Extract random segments from filtered EEG
 
@@ -139,9 +139,9 @@ class ABRFile(Recording):
     def get_epochs_filtered(self, filter_lb=300, filter_ub=3000,
                             filter_order=1, offset=-1e-3, duration=10e-3,
                             detrend='constant', pad_duration=10e-3,
-                            downsample=None, reject_threshold=None,
+                            downsample=None, reject_threshold='saved',
                             reject_mode='absolute', columns='auto',
-                            averages=None, cb=None):
+                            averages='saved', cb=None):
         '''
         Extract event-related epochs from filtered EEG
 
@@ -166,7 +166,7 @@ class ABRFile(Recording):
                                      duration=10e-3, detrend='constant',
                                      pad_duration=10e-3,
                                      downsample=None,
-                                     reject_threshold=None,
+                                     reject_threshold='saved',
                                      reject_mode='absolute'):
         '''
         Extract random segments from EEG
@@ -187,20 +187,22 @@ class ABRFile(Recording):
         result = result.dropna()
 
         if reject_threshold is None:
+            return result
+        if reject_threshold is np.inf:
+            return result
+        if reject_threshold == 'saved':
             # 'reject_mode' wasn't added until a later version of the ABR
             # program, so we set it to the default that was used before if not
             # present.
             reject_threshold = self.get_setting('reject_threshold')
             reject_mode = self.get_setting_default('reject_mode', 'absolute')
 
-        if reject_threshold is not np.inf:
-            # No point doing this if reject_threshold is infinite.
-            if reject_mode == 'absolute':
-                m = (result < reject_threshold).all(axis=1)
-                result = result.loc[m]
-            elif reject_mode == 'amplitude':
-                # TODO
-                raise NotImplementedError
+        if reject_mode == 'absolute':
+            m = (result < reject_threshold).all(axis=1)
+            result = result.loc[m]
+        elif reject_mode == 'amplitude':
+            # TODO
+            raise NotImplementedError
 
         return result
 
@@ -208,10 +210,12 @@ class ABRFile(Recording):
         '''
         Limit epochs to the specified number of averages
         '''
+        if averages is None:
+            return result
         if averages is np.inf:
             return result
-        if averages is None:
-            averages = self.erp_metadata.loc[0, 'averages']
+        if averages == 'saved':
+            averages = self.get_setting('averages')
 
         grouping = list(result.index.names)
         grouping.remove('t0')
@@ -448,15 +452,24 @@ common_docstring = '''
         pad_duration : float
             Duration, in seconds, to pad epoch prior to filtering. The extra
             samples will be discarded after filtering.
-        reject_threshold : {None, float}
-            If None, use the value stored in the file. Otherwise, use the
-            provided value. To return all epochs, use `np.inf`.
+        reject_threshold : {None, 'saved', float}
+            Rejects epochs according to the following criteria:
+                * `None`: do not reject trials
+                * 'saved': Use the value stored in the file
+                * float: Use the provided value.
         reject_mode : string
             Not imlemented
         cb : {None, callable}
             If a callable is provided, this will be called with the current
             fraction of segments loaded from the file. This is useful when
             loading many segments over a slow connection.
+        averages : {None, 'saved', int}
+            Returnes the desired number of epochs (after rejection) according
+            to the following criteria:
+                * `None`: return all trials that pass the rejection filter
+                * 'saved': use the value stored in the file to determine the
+                  number of trials to return
+                * int: Use the provided value.
 '''.strip()
 
 
