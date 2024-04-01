@@ -4,6 +4,9 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
+
+import csaps
 import pandas as pd
 from tqdm import tqdm
 from palettable.colorbrewer import qualitative
@@ -11,7 +14,7 @@ from palettable.colorbrewer import qualitative
 from psiaudio.plot import iter_colors, waterfall_plot
 from psiaudio import util, weighting
 
-from .memr import InterleavedMEMRFile, SimultaneousMEMRFile
+from .memr import InterleavedMEMRFile, SimultaneousMEMRFile, SweepMEMRFile
 from .util import add_default_options, DatasetManager, process_files
 
 
@@ -517,6 +520,224 @@ def process_simultaneous_file(filename, manager, turntable_speed=1, **kwargs):
         manager.save_fig(epoch_figure, 'epoch waveform.pdf')
 
 
+###############################################################################
+# MEMR sweep
+###############################################################################
+def plot_sweep_probe(probe, probe_spl):
+    figure, axes = plt.subplots(1, 2, figsize=(8, 4), constrained_layout=True)
+
+    probe_mean = probe.mean(axis=0)
+    probe_spl_mean = probe_spl.groupby('repeat').mean()
+
+    axes[0].plot(probe_mean.index.values * 1e3, probe_mean, 'k', lw=0.5)
+    axes[0].set_xlabel('Time (ms)')
+    axes[0].set_ylabel('Amplitude (V)')
+
+    axes[1].plot(probe_spl_mean.iloc[:, 1:].T, 'k', lw=0.1, alpha=0.1);
+    axes[1].set_xscale('octave')
+    axes[1].axis(xmin=4e3*.75, xmax=32e3/0.75)
+    axes[1].set_xlabel('Frequency (kHz)')
+    axes[1].set_ylabel('Level (dB SPL)')
+
+    return figure
+
+
+def sweep_elicitor_psd(elicitor, fs, window_size=50e-3):
+    window_size = int(window_size * fs)
+    window_step = window_size // 10
+
+    elicitor_psd = []
+    for epoch in elicitor.values:
+        sv = sliding_window_view(epoch, window_size)
+        p = util.psd_df(sv[::window_step], fs=fs)
+        p.index = pd.Index(np.arange(len(p)) * window_step / fs, name='time')
+        elicitor_psd.append(p)
+
+    elicitor_psd = pd.concat(elicitor_psd, keys=np.arange(len(elicitor_psd)), names=['trial'])
+    return elicitor_psd.groupby('time').mean()
+
+
+def plot_sweep_elicitor(elicitor_mean, elicitor_spl, settings):
+    figure, axes = plt.subplots(1, 2, figsize=(8, 4))
+
+    level = elicitor_spl.loc[:, 4e3*.9:45e3/.9].apply(util.rms_rfft_db, axis=1)
+    ramp_rate = settings['ramp_rate']
+
+    ax = axes[1]
+    peak_time = level.idxmax()
+    peak = level.loc[peak_time]
+    ax.axvline(peak_time, ls=':', color='seagreen')
+    ax.axhline(peak, ls=':', color='seagreen')
+    y = np.abs(level.index - peak_time) * -ramp_rate + peak
+    ax.plot(level.index, y, color='orange', label='Expected', lw=0.5)
+    ax.plot(level, color='k', label='Actual', lw=0.5)
+    ax.grid()
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Level (dB SPL)')
+    ax.legend()
+
+    ax = axes[0]
+    ax.plot(elicitor_mean.loc[1], 'k', lw=0.1, label='Average of + polarity')
+    ax.plot(0.5 * elicitor_mean.loc[1] + 0.5 * elicitor_mean.loc[-1], 'r', lw=0.1, label='Average of +/- polarity')
+    ax.legend(loc='upper right')
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Measured amplitude (V)')
+
+    ps = settings['probe_starship']
+    es = settings['elicitor_starship']
+    side = 'Ipsilateral' if ps == es else 'Contralateral'
+    figure.suptitle(f'{side} MEMR (probe {ps}, elicitor {es})')
+
+    return figure
+
+
+def sweep_artifact_reject(x, q=25, multiplier=1.5):
+    lb, ub = np.percentile(x, [q, 100-q])
+    iqr = ub - lb
+    return (x < (lb - multiplier * iqr)) | (x > (ub + multiplier * iqr))
+
+
+def sweep_get_weights(x):
+    w = np.ones_like(x)
+    r = sweep_artifact_reject(x)
+    w[r] = 0.1
+    return w
+
+
+def sweep_detrend(s, fs):
+    x = np.arange(len(s)) / fs
+    y = np.vstack([np.real(s), np.imag(s)])
+    w = sweep_get_weights(y[0])
+    spline = csaps.CubicSmoothingSpline(x, y, w, smooth=0.9999999)
+    ys = y - spline(x) + y.mean(axis=1, keepdims=True)
+    return pd.Series(ys[0] + 1j * ys[1], index=s.index)
+
+
+def sweep_csaps_smooth(a):
+    x = a.index.values
+    yr = np.real(a.values)
+    yi = np.imag(a.values)
+    y = np.vstack([yr, yi])
+    spline = csaps.CubicSmoothingSpline(x, y, smooth=0.001)
+    ys = spline(x)
+    return ys[0] + 1j * ys[1]
+
+
+def plot_sweep_memr(memr, memr_total):
+    figure, axes = plt.subplots(2, 2, figsize=(8, 8), constrained_layout=True)
+    axes[0, 0].plot(memr.loc[:, :16000], alpha=0.1, lw=0.5, color='k');
+    axes[0, 0].set_ylabel('Change (dB)')
+    axes[0, 0].set_xlabel('Click number')
+
+    axes[0, 1].plot(memr_total.loc[:, :16000], alpha=0.1, lw=0.5, color='k');
+    axes[0, 1].set_ylabel('Total change (dB)')
+    axes[0, 1].set_xlabel('Click number')
+
+    i = len(memr) // 2
+    axes[1, 0].plot(memr.T, lw=0.5, alpha=0.1, color='k');
+    axes[1, 0].plot(memr.loc[0], lw=0.5, alpha=1, color='orange');
+    axes[1, 0].plot(memr.loc[i], lw=0.5, alpha=1, color='blue');
+    axes[1, 0].set_xscale('octave')
+    axes[1, 0].set_ylabel('Change (dB)')
+    axes[1, 0].set_xlabel('Frequency (kHz)')
+
+    axes[1, 1].plot(memr_total.T, lw=0.5, alpha=0.1, color='k');
+    axes[1, 1].plot(memr_total.loc[0], lw=0.5, alpha=1, color='orange', label='Baseline');
+    axes[1, 1].plot(memr_total.loc[i], lw=0.5, alpha=1, color='blue', label='Peak elicitor');
+    axes[1, 1].set_xscale('octave')
+    axes[1, 1].legend()
+    axes[1, 1].set_ylabel('Total change (dB)')
+    axes[1, 1].set_xlabel('Frequency (kHz)')
+
+    return figure
+
+
+def plot_sweep_diagnostics(f_max, r_csd, r_csd_dt, r_csd_sm):
+    figure, axes = plt.subplots(1, 2, figsize=(8, 4), constrained_layout=True)
+
+    s = r_csd.loc[:, f_max].values
+    axes[0].plot(util.db(np.abs(s)), label='raw')
+    s = r_csd_dt.loc[:, f_max].values
+    axes[0].plot(util.db(np.abs(s)), label='detrended')
+    axes[0].legend()
+    axes[0].set_xlabel('Trial # x probe #')
+    axes[0].set_ylabel('Amplitude (dB)')
+
+    x = util.db(np.abs(r_csd.loc[:, f_max].groupby('repeat').mean()))
+    axes[1].plot(x, label='raw')
+    x = util.db(np.abs(r_csd_dt.loc[:, f_max].groupby('repeat').mean()))
+    plt.plot(x, label='detrended')
+    x = util.db(np.abs(r_csd_sm.loc[:, f_max].groupby('repeat').mean()))
+    axes[1].plot(x, label='smoothed')
+    axes[1].set_xlabel('Probe # (average across trials)')
+    axes[1].set_ylabel('Amplitude (dB)')
+    axes[1].legend()
+    return figure
+
+
+sweep_expected_suffixes = [
+    'probe.pdf',
+    'elicitor.pdf',
+    'MEMR.csv',
+    'MEMR_total.csv',
+    'MEMR.pdf',
+    'diagnostics.pdf',
+]
+
+
+def process_sweep_file(filename, manager, turntable_speed=1.25, **kwargs):
+    '''
+    Parameters
+    ----------
+    turntable_speed : {None, float}
+        If None, use value saved in settings. Default speed of 1.25 is the
+        maximum speed we have been using in our experiments and seems to be
+        sufficiently robust to exclude most artifacts.
+    '''
+    with manager.create_cb() as cb:
+        fh = SweepMEMRFile(filename)
+        probe_epoch = fh.get_epochs()
+        elicitor_epoch = fh.get_epochs(signal_name='elicitor_microphone')
+        probe = fh.get_probe()
+        probe_cal = fh.probe_microphone.get_calibration()
+        elicitor_cal = fh.elicitor_microphone.get_calibration()
+
+        probe_spl = probe_cal.get_db(util.psd_df(probe, fs=fh.elicitor_fs))
+        probe_fig = plot_sweep_probe(probe, probe_spl)
+
+        settings = {
+            'probe_starship': fh.get_setting('probe'),
+            'elicitor_starship': fh.get_setting('elicitor'),
+            'ramp_rate': fh.get_setting('ramp_rate'),
+        }
+
+        elicitor_mean = elicitor_epoch.groupby('elicitor_polarity').mean()
+        elicitor_psd = sweep_elicitor_psd(elicitor_epoch, fh.elicitor_fs)
+        elicitor_spl = elicitor_cal.get_db(elicitor_psd)
+        elicitor_fig = plot_sweep_elicitor(elicitor_mean, elicitor_spl, settings)
+
+        r_csd = util.csd_df(probe, fs=fh.probe_fs, window='hann').loc[:, 4e3:32e3]
+        r_csd_dt = r_csd.apply(sweep_detrend, fs=fh.probe_fs)
+        r_csd_mean = r_csd_dt.groupby('repeat').mean()
+        r_csd_sm = r_csd_mean.apply(sweep_csaps_smooth)
+
+        baseline = r_csd_sm.iloc[[0, 1, 2, -3, -2, -1]].mean()
+        r_csd_norm = r_csd_sm / baseline
+        memr_db = util.db(np.abs(r_csd_norm))
+        memr_db_total = util.db(np.abs(r_csd_norm - 1) + 1)
+
+        memr_fig = plot_sweep_memr(memr_db, memr_db_total)
+        f_max = memr_db_total.loc[len(memr_db_total) // 2, :16e3].idxmax()
+        dx_fig = plot_sweep_diagnostics(f_max, r_csd, r_csd_dt, r_csd_sm)
+
+        manager.save_df(memr_db.stack().rename('amplitude'), 'MEMR.csv')
+        manager.save_df(memr_db_total.stack().rename('amplitude'), 'MEMR_total.csv')
+        manager.save_fig(probe_fig, 'probe.pdf')
+        manager.save_fig(elicitor_fig, 'elicitor.pdf')
+        manager.save_fig(memr_fig, 'MEMR.pdf')
+        manager.save_fig(dx_fig, 'diagnostics.pdf')
+
+
 def main_simultaneous_folder():
     import argparse
     parser = argparse.ArgumentParser('Summarize simultaneous MEMR data in folder')
@@ -535,3 +756,13 @@ def main_interleaved_folder():
     process_files(glob_pattern='**/*memr_interleaved*',
                   fn=process_interleaved_file,
                   expected_suffixes=int_expected_suffixes, **args)
+
+
+def main_sweep_folder():
+    import argparse
+    parser = argparse.ArgumentParser('Summarize MEMR sweep data in folder')
+    add_default_options(parser)
+    args = vars(parser.parse_args())
+    process_files(glob_pattern='**/*memr_sweep*',
+                  fn=process_sweep_file,
+                  expected_suffixes=sweep_expected_suffixes, **args)

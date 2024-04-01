@@ -124,7 +124,9 @@ class BaseMEMRFile(Recording):
 
         repeats = self.get_repeats(signal_name=signal_name)
         m = (repeats.columns >= probe_lb) & (repeats.columns < probe_ub)
-        return repeats.loc[:, m].reset_index(['probe_t0', 't0'], drop=True)
+
+        drop = [d for d in ('probe_t0', 't0') if d in repeats.index.names]
+        return repeats.loc[:, m].reset_index(drop, drop=True)
 
     @property
     def trial_duration(self):
@@ -229,3 +231,37 @@ class SimultaneousMEMRFile(BaseMEMRFile):
 
         repeats.index = ix.set_index(names).index
         return repeats.sort_index()
+
+
+class SweepMEMRFile(BaseMEMRFile):
+
+    def get_epochs(self, *args, **kwargs):
+        epochs = super().get_epochs(*args, **kwargs, add_trial=False).sort_index(level='t0')
+        epochs['trial'] = np.arange(len(epochs))
+        return epochs.set_index(['trial'], append=True)
+
+    def get_repeats(self, signal_name='probe_microphone'):
+        r = super().get_repeats(signal_name=signal_name) \
+            .reset_index(['elicitor_polarity', 'probe_t0', 't0'], drop=True)
+        r.index = r.index.swaplevel('repeat', 'trial')
+        return r.sort_index()
+
+    @property
+    def trial_duration(self):
+        return self.get_setting('trial_duration')
+
+    @property
+    def repeat_period(self):
+        return 1 / self.get_setting('probe_rate')
+
+    @property
+    def repeat_t0(self):
+        pass
+
+    @property
+    def repeat_n(self):
+        return int(self.trial_duration * self.get_setting('probe_rate'))
+
+    def repeat_t(self, extra_delay=0.75e-3):
+        offset = fh.get_setting('probe_click_delay') + extra_delay + fh.get_setting('probe_duration') * 0.5
+        return np.arange(self.repeat_n) * self.repeat_period + offset
