@@ -685,6 +685,14 @@ sweep_expected_suffixes = [
 ]
 
 
+def get_sweep_settings(fh):
+    return {
+        'probe_starship': fh.get_setting('probe'),
+        'elicitor_starship': fh.get_setting('elicitor'),
+        'ramp_rate': fh.get_setting('ramp_rate'),
+    }
+
+
 def process_sweep_file(filename, manager, turntable_speed=1.25, **kwargs):
     '''
     Parameters
@@ -705,11 +713,7 @@ def process_sweep_file(filename, manager, turntable_speed=1.25, **kwargs):
         probe_spl = probe_cal.get_db(util.psd_df(probe, fs=fh.elicitor_fs))
         probe_fig = plot_sweep_probe(probe, probe_spl)
 
-        settings = {
-            'probe_starship': fh.get_setting('probe'),
-            'elicitor_starship': fh.get_setting('elicitor'),
-            'ramp_rate': fh.get_setting('ramp_rate'),
-        }
+        settings = get_sweep_settings(fh)
 
         elicitor_mean = elicitor_epoch.groupby('elicitor_polarity').mean()
         elicitor_psd = sweep_elicitor_psd(elicitor_epoch, fh.elicitor_fs)
