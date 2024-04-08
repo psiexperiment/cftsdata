@@ -558,9 +558,21 @@ def sweep_elicitor_psd(elicitor, fs, window_size=50e-3):
 
 
 def plot_sweep_elicitor(elicitor_mean, elicitor_spl, settings):
-    figure, axes = plt.subplots(1, 2, figsize=(8, 4))
+    figure, axes = plt.subplots(1, 3, figsize=(12, 4))
 
-    level = elicitor_spl.loc[:, 4e3*.9:45e3/.9].apply(util.rms_rfft_db, axis=1)
+    lb, ub = settings['elicitor_fl'], settings['elicitor_fh']
+
+    ax = axes[2]
+    i = len(elicitor_spl) // 2
+    ax.plot(elicitor_spl.iloc[i, 1:], 'k-', lw=0.1)
+    ax.set_xscale('octave')
+    ax.axis(xmin=1e3, xmax=64e3, ymin=0)
+    ax.set_xlabel('Frequency (kHz)')
+    ax.set_ylabel('Level (dB SPL)')
+    ax.axvspan(lb, ub, color='lightblue')
+
+
+    level = elicitor_spl.loc[:, lb*.9:ub/.9].apply(util.rms_rfft_db, axis=1)
     ramp_rate = settings['ramp_rate']
 
     ax = axes[1]
@@ -690,6 +702,8 @@ def get_sweep_settings(fh):
         'probe_starship': fh.get_setting('probe'),
         'elicitor_starship': fh.get_setting('elicitor'),
         'ramp_rate': fh.get_setting('ramp_rate'),
+        'elicitor_fl': fh.get_setting('elicitor_fl'),
+        'elicitor_fh': fh.get_setting('elicitor_fh'),
     }
 
 
