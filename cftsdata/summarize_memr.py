@@ -571,7 +571,6 @@ def plot_sweep_elicitor(elicitor_mean, elicitor_spl, settings):
     ax.set_ylabel('Level (dB SPL)')
     ax.axvspan(lb, ub, color='lightblue')
 
-
     level = elicitor_spl.loc[:, lb*.9:ub/.9].apply(util.rms_rfft_db, axis=1)
     ramp_rate = settings['ramp_rate']
 
@@ -699,11 +698,16 @@ sweep_expected_suffixes = [
 
 def get_sweep_settings(fh):
     return {
+        'trial_duration': fh.get_setting('trial_duration'),
         'probe_starship': fh.get_setting('probe'),
         'elicitor_starship': fh.get_setting('elicitor'),
         'ramp_rate': fh.get_setting('ramp_rate'),
         'elicitor_fl': fh.get_setting('elicitor_fl'),
         'elicitor_fh': fh.get_setting('elicitor_fh'),
+        'elicitor_min_level': fh.get_setting('min_level'),
+        'elicitor_max_level': fh.get_setting('max_level'),
+        'probe_rate': fh.get_setting('probe_rate'),
+        'probe_n': fh.get_setting('probe_n'),
     }
 
 
@@ -747,6 +751,15 @@ def process_sweep_file(filename, manager, turntable_speed=1.25, **kwargs):
         memr_fig = plot_sweep_memr(memr_db, memr_db_total)
         f_max = memr_db_total.loc[len(memr_db_total) // 2, :16e3].idxmax()
         dx_fig = plot_sweep_diagnostics(f_max, r_csd, r_csd_dt, r_csd_sm)
+
+        probe_times = np.arange(settings['probe_n'])/settings['probe_rate']
+        probe_times -= settings['trial_duration']/2
+        lb, ub = settings['elicitor_min_level'], settings['elicitor_max_level']
+        elicitor_level = (ub-lb) - np.abs(probe_times) * settings['ramp_rate'] + settings['elicitor_min_level']
+        elicitor_level = pd.Series(elicitor_level, name='elicitor_level')
+        elicitor_level.index.name = 'repeat'
+        memr_db = memr_db.join(elicitor_level).set_index('elicitor_level', append=True)
+        memr_db_total = memr_db_total.join(elicitor_level).set_index('elicitor_level', append=True)
 
         manager.save_df(memr_db.stack().rename('amplitude'), 'MEMR.csv')
         manager.save_df(memr_db_total.stack().rename('amplitude'), 'MEMR_total.csv')
