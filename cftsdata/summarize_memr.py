@@ -616,21 +616,21 @@ def sweep_get_weights(x):
     return w
 
 
-def sweep_detrend(s, fs):
+def sweep_detrend(s, fs, smooth=0.9999999):
     x = np.arange(len(s)) / fs
     y = np.vstack([np.real(s), np.imag(s)])
     w = sweep_get_weights(y[0])
-    spline = csaps.CubicSmoothingSpline(x, y, w, smooth=0.9999999)
+    spline = csaps.CubicSmoothingSpline(x, y, w, smooth=smooth)
     ys = y - spline(x) + y.mean(axis=1, keepdims=True)
     return pd.Series(ys[0] + 1j * ys[1], index=s.index)
 
 
-def sweep_csaps_smooth(a):
+def sweep_csaps_smooth(a, smooth=0.1):
     x = a.index.values
     yr = np.real(a.values)
     yi = np.imag(a.values)
     y = np.vstack([yr, yi])
-    spline = csaps.CubicSmoothingSpline(x, y, smooth=0.001)
+    spline = csaps.CubicSmoothingSpline(x, y, smooth=smooth)
     ys = spline(x)
     return ys[0] + 1j * ys[1]
 
