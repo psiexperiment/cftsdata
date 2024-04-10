@@ -416,3 +416,8 @@ class Dataset:
         return self.load(partial(load_memr, repeat=repeat),
                          '**/*memr_simultaneous_chirp MEMR.csv',
                          parse_psi_filename, **kwargs)
+
+    def load_memr_sweep(self, repeat=None, **kwargs):
+        return self.load(partial(load_memr, repeat=repeat),
+                         '**/*memr_sweep_click MEMR.csv',
+                         parse_psi_filename, **kwargs)
