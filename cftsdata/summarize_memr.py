@@ -22,6 +22,10 @@ int_expected_suffixes = [
     'elicitor level.csv',
     'MEMR.csv',
     'MEMR.pdf',
+    'MEMR_total.csv',
+    'MEMR_total.pdf',
+    'MEMR_amplitude.csv',
+    'MEMR_amplitude_total.csv',
     'probe.pdf',
     'elicitor.pdf',
     'epoch waveform.pdf',
@@ -171,16 +175,11 @@ def plot_probe_level(probe, silence, probe_psd, silence_psd, speed,
     return fig
 
 
-def plot_memr(memr_db, memr_level, settings):
+def plot_memr(memr_db, memr_level, settings, mode='conventional'):
     n_repeat = len(memr_db.index.unique('repeat'))
-    if n_repeat == 1:
-        figsize = (5, 10)
-        figure, axes = plt.subplots(2, n_repeat, figsize=figsize, sharex='row',
-                                    sharey='row', squeeze=False)
-    else:
-        figsize = (3.5*n_repeat, 7/2*3)
-        figure, axes = plt.subplots(3, n_repeat, figsize=figsize, sharex='row',
-                                    sharey='row', squeeze=False)
+    figsize = (3.5*n_repeat, 7/2*2)
+    figure, axes = plt.subplots(2, n_repeat, figsize=figsize, sharex='row',
+                                sharey='row', squeeze=False)
 
     colors = getattr(qualitative, f'Accent_{len(memr_level.columns)}')
     colormap = dict(zip(memr_level.columns.values, colors.mpl_colors))
@@ -189,11 +188,15 @@ def plot_memr(memr_db, memr_level, settings):
         ax = axes[0, i]
         for c, ((_, elicitor), row) in iter_colors(list(memr_r.iterrows())):
             ax.plot(row, color=c, label=f'{elicitor:.0f} dB SPL')
-            for n, (d, lb, ub) in memr_level.attrs['span'].items():
+            for j, (n, (d, lb, ub)) in enumerate(memr_level.attrs['span'].items()):
                 if d == 'N':
                     ax.axvspan(lb, ub, ymax=0.05, color=colormap[n], alpha=0.25)
                 elif d == 'P':
-                    ax.axvspan(lb, ub, ymin=0.95, color=colormap[n], alpha=0.25)
+                    if mode == 'total':
+                        ymin, ymax = (0.95, 1.0) if j % 2 else (0.9, 0.95)
+                    else:
+                        ymin, ymax = 0.95, 1.0
+                    ax.axvspan(lb, ub, ymin=ymin, ymax=ymax, color=colormap[n], alpha=0.25)
                 else:
                     raise ValueError('Unsupported peak type')
         ax.grid()
@@ -205,27 +208,14 @@ def plot_memr(memr_db, memr_level, settings):
         ax.grid()
         ax.set_xlabel('Elicitor level (dB SPL)')
 
-    if n_repeat > 1:
-        for label, ax in zip(memr_level, axes[2]):
-            for c, (r, r_df) in iter_colors(memr_level[label].groupby('repeat')):
-                r_df = r_df.reset_index()
-                ax.plot(r_df['elicitor_level'], r_df[label], label=f'Repeat {r}', color=c)
-                ax.set_title(label)
-            ax.legend()
-            ax.grid()
-            ax.set_xlabel('Elicitor level (dB SPL)')
-        axes[2, 0].set_ylabel('MEMR amplitude (dB)')
-        for ax in axes[2]:
-            if len(ax.lines) == 0:
-                ax.remove()
-
     ps = settings['probe_starship']
     es = settings['elicitor_starship']
     side = 'Ipsilateral' if ps == es else 'Contralateral'
     figure.suptitle(f'{side} MEMR (probe {ps}, elicitor {es})')
 
     axes[0, 0].set_xscale('octave')
-    axes[0, 0].axis(xmin=settings['probe_fl'], xmax=settings['probe_fh'], ymin=-4, ymax=4)
+    ymin = -4 if mode == 'conventional' else 0
+    axes[0, 0].axis(xmin=settings['probe_fl'], xmax=settings['probe_fh'], ymin=ymin, ymax=4)
     axes[0, -1].legend(loc='upper left', bbox_to_anchor=(1.1, 1.05))
     axes[0, 0].set_ylabel('MEMR (dB)')
     axes[1, -1].legend(loc='lower left', bbox_to_anchor=(1.1, 0))
@@ -269,22 +259,32 @@ def get_sim_settings(fh):
     }
 
 
-def calc_memr_amplitude(memr_db):
-    spans = {
-        'P1': ('P', 4e3, 8e3),
-        'N1': ('N', 5.6e3, 11e3),
-        'P2': ('P', 8e3, 16e3),
-        'N2': ('N', 11.3e3, 22.6e3),
-        'P3': ('P', 16e3, 32e3),
+def calc_memr_amplitude(memr_db, span='conventional'):
+    span_options = {
+        'conventional': {
+            'P1': ('P', 4e3, 8e3),
+            'N1': ('N', 5.6e3, 11e3),
+            'P2': ('P', 8e3, 16e3),
+            'N2': ('N', 11.3e3, 22.6e3),
+            'P3': ('P', 16e3, 32e3),
+        },
+        'total': {
+            'P1': ('P', 4e3, 8e3),
+            'P2': ('P', 5.6e3, 11e3),
+            'P3': ('P', 8e3, 16e3),
+            'P4': ('P', 11.3e3, 22.6e3),
+            'P5': ('P', 16e3, 32e3),
+        },
     }
     memr_amplitude = {}
-    for (name, (p, lb, ub)) in spans.items():
+    for (name, (p, lb, ub)) in span_options[span].items():
         if p == 'P':
             memr_amplitude[name] = memr_db.loc[:, lb:ub].max(axis=1)
         elif p == 'N':
             memr_amplitude[name] = -memr_db.loc[:, lb:ub].min(axis=1)
     memr_amplitude = pd.DataFrame(memr_amplitude)
-    memr_amplitude.attrs['span'] = spans
+    memr_amplitude.attrs['span'] = span_options[span]
+    memr_amplitude.columns.name = 'span'
     return memr_amplitude
 
 
@@ -368,36 +368,57 @@ def process_interleaved_file(filename, manager, acoustic_delay=0.75e-3,
             raise ValueError('Unequal number of positive and negative polarity trials')
 
         # This artifact reject is designed to reject a full trial, not just
-        # individual probes.
+        # individual probes. We also want to keep only the desired number of
+        # trials and not include more (for consistency in analysis).
         grouping = ['elicitor_level', 'elicitor_polarity']
-        probe_valid = probe.unstack('repeat').loc[valid].groupby(grouping) \
-            .apply(lambda x: x.iloc[:trial_n]).stack('repeat')
-        probe_valid_mean = probe_valid.groupby(['repeat', 'elicitor_level']).mean()
-        probe_valid_psd_mean = util.psd_df(probe_valid_mean, fh.probe_microphone.fs)
-        memr_db = util.db(probe_valid_psd_mean.loc[1:] / probe_valid_psd_mean.loc[0])
+        probe_valid = probe.unstack('repeat').loc[valid] \
+            .groupby(grouping, group_keys=False) \
+            .apply(lambda x: x.iloc[:trial_n]) \
+            .stack('repeat') \
+            .sort_index()
 
-        # Calculate the average MEMR across all four repeats.
+        probe_csd = util.csd_df(probe_valid, fs=fh.probe_fs)
+        baseline = probe_csd.xs(0, level='repeat')
+        probe_norm = probe_csd.loc[:, :, :, 1:] / baseline
+        flb = settings['probe_fl']
+        fub = settings['probe_fh']
+
+        # Calculate MEMR and then calculate the average MEMR across all four
+        # repeats and add back to the memr_db
+        memr_db = util.db(np.abs(probe_norm)).loc[:, flb:fub].groupby(['repeat', 'elicitor_level']).mean()
         memr_db_mean = memr_db.groupby(['elicitor_level']).mean()
         memr_db_mean = pd.concat([memr_db_mean], keys=['Average'], names=['repeat'])
         memr_db = pd.concat([memr_db_mean, memr_db])
+        memr_amplitude = calc_memr_amplitude(memr_db, 'conventional')
 
-        # Caluclate the MEMR amplitude
-        memr_amplitude = calc_memr_amplitude(memr_db)
+        # Now do the same for total MEMR
+        memr_db_total = util.db(np.abs(probe_norm - 1) + 1).loc[:, flb:fub].groupby(['repeat', 'elicitor_level']).mean()
+        memr_db_total_mean = memr_db_total.groupby(['elicitor_level']).mean()
+        memr_db_total_mean = pd.concat([memr_db_total_mean], keys=['Average'], names=['repeat'])
+        memr_db_total = pd.concat([memr_db_total_mean, memr_db_total])
+        memr_amplitude_total = calc_memr_amplitude(memr_db_total, 'total')
 
+        # Make some diagnostic plots
         # Plot the positive polarity first
         stim_train_figure, ax = plot_stim_train(epochs_mean.loc[1], settings)
         # Now, plot sum of positive and negative to verify they cancel out
         plot_stim_train(epochs_mean.loc[-1] + epochs_mean.loc[1], None, ax=ax, color='r')
-
         elicitor_psd_figure = plot_elicitor_spl(elicitor_spl_mean, elicitor_level, settings)
         probe_level_figure = plot_probe_level(probe, silence, probe_spl, silence_spl, speed, speed_cutoff=settings['turntable_speed'])
-        memr_figure = plot_memr(memr_db, memr_amplitude, settings)
+
+        # Now plot the MEMR
+        memr_figure = plot_memr(memr_db, memr_amplitude, settings, 'conventional')
+        memr_total_figure = plot_memr(memr_db_total, memr_amplitude_total, settings, 'total')
 
         manager.save_fig(stim_train_figure, 'epoch waveform.pdf')
         manager.save_fig(elicitor_psd_figure, 'elicitor.pdf')
         manager.save_fig(probe_level_figure, 'probe.pdf')
         manager.save_fig(memr_figure, 'MEMR.pdf')
+        manager.save_fig(memr_total_figure, 'MEMR_total.pdf')
         manager.save_df(memr_db.stack().rename('amplitude'), 'MEMR.csv')
+        manager.save_df(memr_db_total.stack().rename('amplitude'), 'MEMR_total.csv')
+        manager.save_df(memr_amplitude.stack().rename('amplitude'), 'MEMR_amplitude.csv')
+        manager.save_df(memr_amplitude_total.stack().rename('amplitude'), 'MEMR_amplitude_total.csv')
         manager.save_df(elicitor_level, 'elicitor level.csv', index=False)
 
 
