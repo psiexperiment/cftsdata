@@ -725,7 +725,7 @@ def get_sweep_settings(fh):
         'ramp_rate': fh.get_setting('ramp_rate'),
         'elicitor_fl': fh.get_setting('elicitor_fl'),
         'elicitor_fh': fh.get_setting('elicitor_fh'),
-        'elicitor_min_level': fh.get_setting('min_level'),
+        'elicitor_min_level': fh.get_setting('min_level', 0),
         'elicitor_max_level': fh.get_setting('max_level'),
         'probe_rate': fh.get_setting('probe_rate'),
         'probe_n': fh.get_setting('probe_n'),
