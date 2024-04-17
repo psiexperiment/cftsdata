@@ -779,8 +779,11 @@ def process_sweep_file(filename, manager, turntable_speed=1.25, **kwargs):
         elicitor_level = (ub-lb) - np.abs(probe_times) * settings['ramp_rate'] + settings['elicitor_min_level']
         elicitor_level = pd.Series(elicitor_level, name='elicitor_level')
         elicitor_level.index.name = 'repeat'
+
         memr_db = memr_db.join(elicitor_level).set_index('elicitor_level', append=True)
+        memr_db.columns.name = 'frequency'
         memr_db_total = memr_db_total.join(elicitor_level).set_index('elicitor_level', append=True)
+        memr_db_total.columns.name = 'frequency'
 
         manager.save_df(memr_db.stack().rename('amplitude'), 'MEMR.csv')
         manager.save_df(memr_db_total.stack().rename('amplitude'), 'MEMR_total.csv')
