@@ -177,7 +177,7 @@ def plot_probe_level(probe, silence, probe_psd, silence_psd, speed,
 
 def plot_memr(memr_db, memr_level, settings, mode='conventional'):
     n_repeat = len(memr_db.index.unique('repeat'))
-    figsize = (3.5*n_repeat, 7/2*2)
+    figsize = (4.5*n_repeat, 7/2*2)
     figure, axes = plt.subplots(2, n_repeat, figsize=figsize, sharex='row',
                                 sharey='row', squeeze=False)
 
@@ -427,13 +427,17 @@ sim_expected_suffixes = [
     'elicitor level.csv',
     'MEMR.csv',
     'MEMR.pdf',
+    'MEMR_total.csv',
+    'MEMR_total.pdf',
+    'MEMR_amplitude.csv',
+    'MEMR_amplitude_total.csv',
     'probe.pdf',
     'elicitor.pdf',
     'epoch waveform.pdf',
 ]
 
 
-def process_simultaneous_file(filename, manager, turntable_speed=1, **kwargs):
+def process_simultaneous_file(filename, manager, turntable_speed=1.25, **kwargs):
     with manager.create_cb() as cb:
         fh = SimultaneousMEMRFile(filename)
 
@@ -454,15 +458,22 @@ def process_simultaneous_file(filename, manager, turntable_speed=1, **kwargs):
         probe = fh.get_probe(trim=(0, 1e-3)).xs(0, level='trial')
         probe_spl = probe_cal.get_db(util.psd_df(probe, fs=fh.probe_fs, detrend='constant'))
 
-        probe_mean = probe.loc[valid] \
+        flb, fub = settings['probe_fl'], settings['probe_fh']
+        probe_csd = util.csd_df(probe.loc[valid], fs=fh.probe_fs).loc[:, flb:fub]
+        probe_csd_mean = probe_csd \
             .groupby(['group', 'repeat', 'elicitor_level']).mean() \
             .groupby(['group', 'elicitor_level']).mean()
-        probe_spl_mean = probe_cal.get_db(util.psd_df(probe_mean, fs=fh.probe_fs))
-        memr_db = probe_spl_mean.loc['elicitor'] - probe_spl_mean.loc['baseline']
-        memr_db = pd.concat([memr_db], keys=['Average'], names=['repeat'])
 
-        # Caluclate the MEMR amplitude
-        memr_amplitude = calc_memr_amplitude(memr_db)
+        probe_norm = probe_csd_mean.loc['elicitor'] / probe_csd_mean.loc['baseline']
+
+        memr_db = util.db(np.abs(probe_norm))
+        memr_db = pd.concat([memr_db], keys=['Average'], names=['repeat'])
+        memr_db_total = util.db(np.abs(probe_norm - 1) + 1)
+        memr_db_total = pd.concat([memr_db_total], keys=['Average'], names=['repeat'])
+
+        # Calculate the MEMR amplitude
+        memr_amplitude = calc_memr_amplitude(memr_db, 'conventional')
+        memr_amplitude_total = calc_memr_amplitude(memr_db_total, 'total')
 
         elicitor_epochs = fh.get_epochs(signal_name='elicitor_microphone') \
             .xs(0, level='trial').reset_index('t0', drop=True)
@@ -530,12 +541,17 @@ def process_simultaneous_file(filename, manager, turntable_speed=1, **kwargs):
         elicitor_level = elicitor_level.reset_index(drop=True)
         elicitor_figure = plot_elicitor_spl(elicitor_spl, elicitor_level, settings)
 
-        memr_figure = plot_memr(memr_db, memr_amplitude, settings)
+        memr_figure = plot_memr(memr_db, memr_amplitude, settings, 'conventional')
+        memr_total_figure = plot_memr(memr_db_total, memr_amplitude_total, settings, 'total')
 
         manager.save_df(valid_count, 'valid count.csv', index=False)
         manager.save_df(elicitor_level, 'elicitor level.csv', index=False)
         manager.save_df(memr_db.stack().rename('amplitude'), 'MEMR.csv')
+        manager.save_df(memr_db_total.stack().rename('amplitude'), 'MEMR_total.csv')
         manager.save_fig(memr_figure, 'MEMR.pdf')
+        manager.save_fig(memr_total_figure, 'MEMR_total.pdf')
+        manager.save_df(memr_amplitude.stack().rename('amplitude'), 'MEMR_amplitude.csv')
+        manager.save_df(memr_amplitude_total.stack().rename('amplitude'), 'MEMR_amplitude_total.csv')
         manager.save_fig(probe_figure, 'probe.pdf')
         manager.save_fig(elicitor_figure, 'elicitor.pdf')
         manager.save_fig(epoch_figure, 'epoch waveform.pdf')
