@@ -66,6 +66,15 @@ def load_memr(filename, repeat=None):
     return df.reset_index()
 
 
+def load_memr_amplitude(filename, repeat=None, span=None):
+    df = pd.read_csv(filename, index_col=['repeat', 'elicitor_level', 'span'])['amplitude']
+    if repeat is not None:
+        df = df.loc[repeat]
+    if span is not None:
+        df = df.xs(span, level='span')
+    return df.reset_index()
+
+
 def coerce_frequency(columns, octave_step, si_prefix=''):
     '''
     Decorator for methods in subclasses of `Dataset` that coerce frequencies in
@@ -407,17 +416,38 @@ class Dataset:
         }
         return self.load_raw_jmes('io.json', query, etype=etype)
 
-    def load_memr_int(self, repeat=None, **kwargs):
+    def _load_memr(self, etype, repeat=None, total=False, **kwargs):
+        glob = f'**/*{etype} MEMR_total.csv' if total \
+            else f'**/*{etype} MEMR.csv'
         return self.load(partial(load_memr, repeat=repeat),
-                         '**/*memr_interleaved_click MEMR.csv',
-                         parse_psi_filename, **kwargs)
+                         glob, parse_psi_filename, **kwargs)
 
-    def load_memr_sim(self, repeat=None, **kwargs):
-        return self.load(partial(load_memr, repeat=repeat),
-                         '**/*memr_simultaneous_chirp MEMR.csv',
-                         parse_psi_filename, **kwargs)
+    def load_memr_int(self, repeat=None, total=False, **kwargs):
+        return self._load_memr('memr_interleaved_click', repeat=repeat, total=total, **kwargs)
 
-    def load_memr_sweep(self, repeat=None, **kwargs):
-        return self.load(partial(load_memr, repeat=repeat),
-                         '**/*memr_sweep_click MEMR.csv',
-                         parse_psi_filename, **kwargs)
+    def load_memr_sim(self, repeat=None, total=False, **kwargs):
+        return self._load_memr('memr_simultaneous_chirp', repeat=repeat, total=total, **kwargs)
+
+    def load_memr_sweep(self, repeat=None, total=False, **kwargs):
+        return self._load_memr('memr_sweep_click', repeat=repeat, total=total, **kwargs)
+
+    def _load_memr_amplitude(self, etype, repeat=None, span=None, total=False, **kwargs):
+        glob = f'**/*{etype} MEMR_amplitude_total.csv' if total \
+            else f'**/*{etype} MEMR_amplitude.csv'
+        print(glob)
+        return self.load(partial(load_memr_amplitude, repeat=repeat, span=span),
+                         glob, parse_psi_filename, **kwargs)
+
+    def load_memr_int_amplitude(self, repeat=None, span=None, total=False, **kwargs):
+        return self._load_memr_amplitude('memr_interleaved_click',
+                                         repeat=repeat, span=span, total=total,
+                                         **kwargs)
+
+    def load_memr_sim_amplitude(self, repeat=None, span=None, total=False, **kwargs):
+        return self._load_memr_amplitude('memr_simultaneous_chirp',
+                                         repeat=repeat, span=span, total=total,
+                                         **kwargs)
+
+    def load_memr_sweep(self, repeat=None, span=None, total=False, **kwargs):
+        return self._load_memr_amplitude('memr_sweep_click', repeat=repeat,
+                                         span=span, total=total, **kwargs)
