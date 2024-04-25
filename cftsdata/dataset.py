@@ -59,6 +59,33 @@ def load_efr_level(filename, which='total'):
     return result
 
 
+def load_efr_harmonics(x):
+    df = pd.read_csv(x)
+    # This corrects for a difference in the data saved between the Bharadwaj
+    # and Verhulst bootstrapping approaches. In Bharadwaj output, the harmonic
+    # is the harmonic number (i.e., not the actual harmonic frequency). In the
+    # Verhulst output, we only save the frequency, not the harmonic number.
+    if 'frequency' not in df:
+        df['frequency'] = df['harmonic']
+        df['harmonic'] = df.eval('frequency / fm').astype('i')
+    grouping = ['fc', 'fm', 'frequency', 'harmonic']
+    result = df.groupby(grouping).mean().reset_index()
+    if 'bootstrap' in result:
+        return result.drop(columns='bootstrap')
+    else:
+        return result
+
+
+def load_efr(x):
+    result = pd.read_csv(x) \
+        .groupby(['fc', 'fm']) \
+        .mean().reset_index()
+    if 'bootstrap' in result:
+        return result.drop(columns='bootstrap')
+    else:
+        return result
+
+
 def load_memr(filename, repeat=None):
     df = pd.read_csv(filename, index_col=['repeat', 'elicitor_level', 'frequency'])['amplitude']
     if repeat is not None:
@@ -380,21 +407,33 @@ class Dataset:
                           '**/*ABR eeg rms.json',
                           parse_psi_filename, **kwargs)
 
-    def load_efr_sam_linear(self, **kwargs):
-        def _load_efr_sam_linear(x):
-            return pd.read_csv(x).groupby(['fc', 'fm'])['efr_amplitude'] \
-                .agg(['mean', 'std']).add_prefix('efr_sam_linear_').reset_index()
-        return self.load(_load_efr_sam_linear,
-                         '**/*efr_sam*EFR amplitude linear.csv',
-                         parse_psi_filename, **kwargs)
+    def _check_efr_params(self, efr_type, method):
+        if efr_type.lower() not in ('sam', 'ram'):
+            raise ValueError(f'Unrecognized EFR type "{efr_type}". Valid types are SAM or RAM.')
+        if method.lower() not in ('verhulst', 'bharadwaj'):
+            raise ValueError(f'Unrecognized method "{method}". Valid methods are Verhulst or Bharadwaj.')
 
-    def load_efr_ram_linear(self, **kwargs):
-        def _load_efr_ram_linear(x):
-            return pd.read_csv(x).groupby(['fc', 'fm'])['efr_amplitude'] \
-                .agg(['mean', 'std']).add_prefix('efr_ram_linear_').reset_index()
-        return self.load(_load_efr_ram_linear,
-                         '**/*efr_ram*EFR amplitude linear.csv',
-                         parse_psi_filename, **kwargs)
+    def load_efr_harmonics(self, efr_type, method, **kwargs):
+        '''
+        Load EFR harmonics
+
+        Parameters
+        ---------
+        efr_type : {'SAM', 'RAM'}
+            EFR to load harmonics for
+        method : {'Verhulst', 'Bharadwaj'}
+            Method for calculating EFR amplitude
+        '''
+        self._check_efr_params(efr_type, method)
+        suffix = ' linear' if method.lower() == 'verhulst' else ''
+        glob = f'**/*efr_{efr_type.lower()}*EFR harmonics{suffix}.csv'
+        return self.load(load_efr_harmonics, glob, parse_psi_filename, **kwargs)
+
+    def load_efr(self, efr_type, method, **kwargs):
+        self._check_efr_params(efr_type, method)
+        suffix = ' amplitude linear' if method.lower() == 'verhulst' else ''
+        glob = f'**/*efr_{efr_type.lower()}*EFR{suffix}.csv'
+        return self.load(load_efr, glob, parse_psi_filename, **kwargs)
 
     def load_efr_sam_level(self, **kwargs):
         return self.load(load_efr_level,
@@ -416,38 +455,24 @@ class Dataset:
         }
         return self.load_raw_jmes('io.json', query, etype=etype)
 
-    def _load_memr(self, etype, repeat=None, total=False, **kwargs):
+    def _get_memr_etype(self, memr):
+        memr_map = {
+            'valero': 'memr_simultaneous_chirp',
+            'keefe': 'memr_interleaved_click',
+            'sweep': 'memr_sweep_click',
+        }
+        return memr_map[memr.lower()]
+
+    def load_memr(self, memr, repeat=None, total=False, **kwargs):
+        etype = self._get_memr_etype(memr)
         glob = f'**/*{etype} MEMR_total.csv' if total \
             else f'**/*{etype} MEMR.csv'
         return self.load(partial(load_memr, repeat=repeat),
                          glob, parse_psi_filename, **kwargs)
 
-    def load_memr_int(self, repeat=None, total=False, **kwargs):
-        return self._load_memr('memr_interleaved_click', repeat=repeat, total=total, **kwargs)
-
-    def load_memr_sim(self, repeat=None, total=False, **kwargs):
-        return self._load_memr('memr_simultaneous_chirp', repeat=repeat, total=total, **kwargs)
-
-    def load_memr_sweep(self, repeat=None, total=False, **kwargs):
-        return self._load_memr('memr_sweep_click', repeat=repeat, total=total, **kwargs)
-
-    def _load_memr_amplitude(self, etype, repeat=None, span=None, total=False, **kwargs):
+    def load_memr_amplitude(self, memr, repeat=None, span=None, total=False, **kwargs):
+        etype = self._get_memr_etype(memr)
         glob = f'**/*{etype} MEMR_amplitude_total.csv' if total \
             else f'**/*{etype} MEMR_amplitude.csv'
-        print(glob)
         return self.load(partial(load_memr_amplitude, repeat=repeat, span=span),
                          glob, parse_psi_filename, **kwargs)
-
-    def load_memr_int_amplitude(self, repeat=None, span=None, total=False, **kwargs):
-        return self._load_memr_amplitude('memr_interleaved_click',
-                                         repeat=repeat, span=span, total=total,
-                                         **kwargs)
-
-    def load_memr_sim_amplitude(self, repeat=None, span=None, total=False, **kwargs):
-        return self._load_memr_amplitude('memr_simultaneous_chirp',
-                                         repeat=repeat, span=span, total=total,
-                                         **kwargs)
-
-    def load_memr_sweep(self, repeat=None, span=None, total=False, **kwargs):
-        return self._load_memr_amplitude('memr_sweep_click', repeat=repeat,
-                                         span=span, total=total, **kwargs)
