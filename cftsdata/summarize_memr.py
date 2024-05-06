@@ -32,6 +32,13 @@ int_expected_suffixes = [
 ]
 
 
+int_threshold_expected_suffixes = [
+    'raw_levels.csv',
+    'raw_corr.csv',
+]
+
+
+
 def plot_stim_train(epochs, settings=None, ax=None, color='k'):
     if ax is None:
         figsize = 6, 1 * len(epochs)
@@ -288,8 +295,56 @@ def calc_memr_amplitude(memr_db, span='conventional'):
     return memr_amplitude
 
 
-def process_interleaved_file(filename, manager, acoustic_delay=0.75e-3,
-                             turntable_speed=1.25, **kwargs):
+def interleaved_memr_threshold_stats(probe, silence, fs):
+    # Calculate the mean click difference
+    d_probe = probe.loc[1:] - probe.loc[0]
+    d_silence = silence.loc[1:] - silence.loc[0]
+
+    d_probe_csd = util.csd_df(d_probe, fs=fs).loc[:, 4e3:32e3]
+    d_silence_csd = util.csd_df(d_silence, fs=fs).loc[:, 4e3:32e3]
+    d_probe_level = util.db(np.abs(d_probe_csd).apply(util.rms_rfft, axis=1))
+    d_silence_level = util.db(np.abs(d_silence_csd).apply(util.rms_rfft, axis=1))
+
+    d_levels = pd.concat((d_probe_level, d_silence_level), keys=('probe', 'silence'), names=['interval'])
+    #crit1 = d_levels.loc['probe'] > (d_levels.loc['silence'] + 6)
+    #crit1_n = crit1.groupby('elicitor_level').agg(['size', 'sum'])
+
+    def complex_corr(x):
+        i = np.triu_indices(4, 1)
+        power = np.abs(x)
+        phase = np.angle(x)
+        real = np.real(x)
+        imag = np.imag(x)
+        df = pd.DataFrame({
+            'power': np.corrcoef(power)[i],
+            'phase': np.corrcoef(phase)[i],
+            'real': np.corrcoef(real)[i],
+            'imag': np.corrcoef(imag)[i],
+        })
+        df.columns.name = 'measure'
+        df.index.name = 'pair'
+        return df
+
+    cols = ['elicitor_level', 'elicitor_polarity', 'trial']
+    corr = d_probe_csd.groupby(cols).apply(complex_corr)
+    #crit2 = corr[['power', 'phase']] > 0.7
+    #crit2_n = crit2.stack().groupby('elicitor_level').agg(['size', 'sum'])
+    return d_levels, corr
+
+
+def process_interleaved_file_threshold(filename, manager, turntable_speed=1.25, **kwargs):
+    with manager.create_cb() as cb:
+        fh = InterleavedMEMRFile(filename)
+        probe = fh.get_probe()
+        silence = fh.get_silence()
+        probe_valid = fh.valid_epochs(probe, turntable_speed=turntable_speed)
+        silence_valid = fh.valid_epochs(silence, turntable_speed=turntable_speed)
+        levels, corr = interleaved_memr_threshold_stats(probe_valid, silence_valid, fh.probe_fs)
+        manager.save_df(levels.rename('level'), 'raw_levels.csv')
+        manager.save_df(corr.stack().rename('corr'), 'raw_corr.csv')
+
+
+def process_interleaved_file(filename, manager, turntable_speed=1.25, **kwargs):
     '''
     Parameters
     ----------
@@ -315,7 +370,6 @@ def process_interleaved_file(filename, manager, acoustic_delay=0.75e-3,
         cb(0.6)
 
         speed = fh.get_max_epoch_speed()
-        valid = fh.get_valid_epoch_mask()
 
         # Now, load the repeats. This essentially segments the epochs DataFrame
         # into the individual elicitor and probe repeat segments.
@@ -349,27 +403,15 @@ def process_interleaved_file(filename, manager, acoustic_delay=0.75e-3,
         probe = fh.get_probe()
         silence = fh.get_silence()
 
-        # Calculate the overall level.
+        # This is used for generating some diagnostic plots where we want to
+        # keep all the probes, not just the ones that were accepted.
         probe_spl = probe_cal.get_db(util.psd_df(probe, fs=fh.probe_microphone.fs, detrend='constant'))
         silence_spl = probe_cal.get_db(util.psd_df(silence, fs=fh.probe_microphone.fs, detrend='constant'))
 
-        trial_n = int(settings['trial_n'] / 2)
-        if (trial_n * 2) != settings['trial_n']:
-            raise ValueError('Unequal number of positive and negative polarity trials')
-
-        # This artifact reject is designed to reject a full trial, not just
-        # individual probes. We also want to keep only the desired number of
-        # trials and not include more (for consistency in analysis).
-        grouping = ['elicitor_level', 'elicitor_polarity']
-        probe_valid = probe.unstack('repeat').loc[valid] \
-            .groupby(grouping, group_keys=False) \
-            .apply(lambda x: x.iloc[:trial_n]) \
-            .stack('repeat') \
-            .sort_index()
-
+        probe_valid = fh.valid_epochs(probe, turntable_speed=turntable_speed)
+        silence_valid = fh.valid_epochs(silence, turntable_speed=turntable_speed)
         probe_csd = util.csd_df(probe_valid, fs=fh.probe_fs)
-        baseline = probe_csd.xs(0, level='repeat')
-        probe_norm = probe_csd.loc[:, :, :, 1:] / baseline
+        probe_norm = probe_csd.loc[1:] / probe_csd.loc[0]
         flb = settings['probe_fl']
         fub = settings['probe_fh']
 
@@ -817,6 +859,16 @@ def main_interleaved_folder():
     process_files(glob_pattern='**/*memr_interleaved*',
                   fn=process_interleaved_file,
                   expected_suffixes=int_expected_suffixes, **args)
+
+
+def main_interleaved_folder_threshold():
+    import argparse
+    parser = argparse.ArgumentParser('Summarize interleaved MEMR data in folder')
+    add_default_options(parser)
+    args = vars(parser.parse_args())
+    process_files(glob_pattern='**/*memr_interleaved*',
+                  fn=process_interleaved_file_threshold,
+                  expected_suffixes=int_threshold_expected_suffixes, **args)
 
 
 def main_sweep_folder():

@@ -476,3 +476,13 @@ class Dataset:
             else f'**/*{etype} MEMR_amplitude.csv'
         return self.load(partial(load_memr_amplitude, repeat=repeat, span=span),
                          glob, parse_psi_filename, **kwargs)
+
+    def load_memr_corr(self, memr):
+        etype = self._get_memr_etype(memr)
+        glob = f'**/*{etype} raw_corr.csv'
+        return self.load(lambda x: pd.read_csv(x), glob, parse_psi_filename)
+
+    def load_memr_level(self, memr):
+        etype = self._get_memr_etype(memr)
+        glob = f'**/*{etype} raw_levels.csv'
+        return self.load(lambda x: pd.read_csv(x), glob, parse_psi_filename)
