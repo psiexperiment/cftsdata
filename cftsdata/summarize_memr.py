@@ -365,7 +365,7 @@ def process_interleaved_file(filename, manager, turntable_speed=1.25, **kwargs):
         # because if we average in the negative polarity, the noise will cancel
         # out. If we invert then average in the negative polarity, the chirp will
         # cancel out! We just can't win.
-        epochs = fh.get_epochs(cb=lambda x: x * 0.5)
+        epochs = fh.get_epochs(cb=lambda x: x * 0.5).dropna()
         epochs_mean = epochs.groupby(['elicitor_polarity', 'elicitor_level']).mean()
         cb(0.6)
 
@@ -373,7 +373,7 @@ def process_interleaved_file(filename, manager, turntable_speed=1.25, **kwargs):
 
         # Now, load the repeats. This essentially segments the epochs DataFrame
         # into the individual elicitor and probe repeat segments.
-        elicitor = fh.get_elicitor()
+        elicitor = fh.get_elicitor().dropna()
         elicitor_psd = util.psd_df(elicitor, fs=fs)
         elicitor_spl = elicitor_cal.get_db(elicitor_psd)
 
