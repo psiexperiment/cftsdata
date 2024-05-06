@@ -1,4 +1,4 @@
-from functools import lru_cache
+#from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -60,7 +60,7 @@ class BaseMEMRFile(Recording):
             return self.__getattr__('microphone')
 
     @property
-    @lru_cache(maxsize=MAXSIZE)
+    #@lru_cache(maxsize=MAXSIZE)
     def memr_metadata(self):
         try:
             data = self.__getattr__('memr_metadata')
@@ -71,7 +71,7 @@ class BaseMEMRFile(Recording):
         rename = {k: v for k, v in RENAME.items() if v not in data}
         return data.rename(columns=rename)
 
-    @lru_cache(maxsize=MAXSIZE)
+    #@lru_cache(maxsize=MAXSIZE)
     def get_epochs(self, columns='auto', signal_name='probe_microphone',
                    add_trial=True, cb=None):
         signal = getattr(self, signal_name)
@@ -86,7 +86,7 @@ class BaseMEMRFile(Recording):
             epochs.columns = epochs.columns.astype(dtype)
         return epochs
 
-    @lru_cache(maxsize=MAXSIZE)
+    #@lru_cache(maxsize=MAXSIZE)
     def get_repeats(self, columns='auto', signal_name='probe_microphone'):
         fs = getattr(self, signal_name).fs
         epochs = self.get_epochs(columns, signal_name).copy()
@@ -108,7 +108,7 @@ class BaseMEMRFile(Recording):
             keys.append((i, lb / fs))
         return pd.concat(repeats, keys=keys, names=['repeat', 'probe_t0'])
 
-    @lru_cache(maxsize=MAXSIZE)
+    #@lru_cache(maxsize=MAXSIZE)
     def get_probe(self, acoustic_delay=0.75e-3, signal_name='probe_microphone',
                   trim=0):
         if isinstance(trim, tuple):
@@ -139,7 +139,7 @@ class BaseMEMRFile(Recording):
 
 class InterleavedMEMRFile(BaseMEMRFile):
 
-    @lru_cache(maxsize=MAXSIZE)
+    #@lru_cache(maxsize=MAXSIZE)
     def get_velocity(self, signal_name='turntable_linear_velocity'):
         return self.get_epochs(signal_name=signal_name)
 
@@ -151,14 +151,14 @@ class InterleavedMEMRFile(BaseMEMRFile):
     def repeat_period(self):
         return self.get_setting('repeat_period')
 
-    @lru_cache(maxsize=MAXSIZE)
+    #@lru_cache(maxsize=MAXSIZE)
     def get_elicitor(self, signal_name='elicitor_microphone'):
         repeats = self.get_repeats(signal_name=signal_name)
         elicitor_delay = self.get_setting('elicitor_envelope_start_time')
         m = repeats.columns >= elicitor_delay
         return repeats.loc[:, m].reset_index(['probe_t0', 't0'], drop=True)
 
-    @lru_cache(maxsize=MAXSIZE)
+    #@lru_cache(maxsize=MAXSIZE)
     def get_silence(self, acoustic_delay=0.75e-3,
                     signal_name='probe_microphone', trim=0):
         probe_delay = self.get_setting('probe_delay')
@@ -172,6 +172,42 @@ class InterleavedMEMRFile(BaseMEMRFile):
         m = (repeats.columns >= silence_lb) & (repeats.columns < silence_ub)
         return repeats.loc[:, m].reset_index(['probe_t0', 't0'], drop=True)
 
+    def get_max_epoch_speed(self):
+        # Load the turntable speed and find maximum across entire epoch. We
+        # drop the very last sample because these samples have not always been
+        # available in the online artifact reject so we want to be sure we
+        # don't end up rejecting a trial that was kept in the online artifact
+        # reject.
+        return self.get_speed().iloc[:, :-1] \
+            .max(axis=1).reset_index('t0', drop=True)
+
+    def get_valid_epoch_mask(self, turntable_speed=None):
+        # If turntable_speed is not set, load from the settings.
+        if turntable_speed is None:
+            turntable_speed = self.get_setting('max_turntable_speed')
+        valid = self.get_max_epoch_speed() < turntable_speed
+        valid.name = 'valid'
+        return valid
+
+    def valid_epochs(self, epochs, trial_n=None, turntable_speed=None):
+        valid = self.get_valid_epoch_mask(turntable_speed)
+
+        if trial_n is None:
+            trial_n = int(self.get_setting('trial_n') / 2)
+        if (trial_n * 2) != self.get_setting('trial_n'):
+            raise ValueError('Unequal number of positive and negative polarity trials')
+
+        # This artifact reject is designed to reject a full trial, not just
+        # individual probes. We also want to keep only the desired number of
+        # trials and not include more (for consistency in analysis).
+        grouping = ['elicitor_level', 'elicitor_polarity']
+        result = epochs.unstack('repeat').loc[valid] \
+            .groupby(grouping, group_keys=False) \
+            .apply(lambda x: x.iloc[:trial_n]) \
+            .stack('repeat')
+        result.index = result.index.reorder_levels((3, 0, 1, 2))
+        return result.sort_index()
+
 
 class SimultaneousMEMRFile(BaseMEMRFile):
 
@@ -179,7 +215,7 @@ class SimultaneousMEMRFile(BaseMEMRFile):
     def trial_duration(self):
         return self.get_setting('trial_duration')
 
-    @lru_cache(maxsize=MAXSIZE)
+    #@lru_cache(maxsize=MAXSIZE)
     def get_velocity(self, signal_name='turntable_linear_velocity'):
         repeats = self.get_repeats(signal_name=signal_name)
         return repeats.reset_index(['probe_t0', 't0'], drop=True)

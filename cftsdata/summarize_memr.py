@@ -314,18 +314,8 @@ def process_interleaved_file(filename, manager, acoustic_delay=0.75e-3,
         epochs_mean = epochs.groupby(['elicitor_polarity', 'elicitor_level']).mean()
         cb(0.6)
 
-        # Load the turntable speed and find maximum across entire repeat. We
-        # drop the very last sample because these samples have not always been
-        # available in the online artifact reject so we want to be sure we
-        # don't end up rejecting a trial that was kept in the online artifact
-        # reject.
-        speed = fh.get_speed().iloc[:, :-1].max(axis=1).reset_index('t0', drop=True)
-
-        # If turntable_speed is not set, load from the settings.
-        if turntable_speed is None:
-            turntable_speed = settings['turntable_speed']
-        valid = speed < turntable_speed
-        valid.name = 'valid'
+        speed = fh.get_max_epoch_speed()
+        valid = fh.get_valid_epoch_mask()
 
         # Now, load the repeats. This essentially segments the epochs DataFrame
         # into the individual elicitor and probe repeat segments.
