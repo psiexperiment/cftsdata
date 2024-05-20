@@ -60,7 +60,6 @@ class BaseMEMRFile(Recording):
             return self.__getattr__('microphone')
 
     @property
-    #@lru_cache(maxsize=MAXSIZE)
     def memr_metadata(self):
         try:
             data = self.__getattr__('memr_metadata')
@@ -71,7 +70,6 @@ class BaseMEMRFile(Recording):
         rename = {k: v for k, v in RENAME.items() if v not in data}
         return data.rename(columns=rename)
 
-    #@lru_cache(maxsize=MAXSIZE)
     def get_epochs(self, columns='auto', signal_name='probe_microphone',
                    add_trial=True, cb=None):
         signal = getattr(self, signal_name)
@@ -86,7 +84,6 @@ class BaseMEMRFile(Recording):
             epochs.columns = epochs.columns.astype(dtype)
         return epochs
 
-    #@lru_cache(maxsize=MAXSIZE)
     def get_repeats(self, columns='auto', signal_name='probe_microphone'):
         fs = getattr(self, signal_name).fs
         epochs = self.get_epochs(columns, signal_name).copy()
@@ -108,7 +105,6 @@ class BaseMEMRFile(Recording):
             keys.append((i, lb / fs))
         return pd.concat(repeats, keys=keys, names=['repeat', 'probe_t0'])
 
-    #@lru_cache(maxsize=MAXSIZE)
     def get_probe(self, acoustic_delay=0.75e-3, signal_name='probe_microphone',
                   trim=0):
         if isinstance(trim, tuple):
@@ -139,7 +135,6 @@ class BaseMEMRFile(Recording):
 
 class InterleavedMEMRFile(BaseMEMRFile):
 
-    #@lru_cache(maxsize=MAXSIZE)
     def get_velocity(self, signal_name='turntable_linear_velocity'):
         return self.get_epochs(signal_name=signal_name)
 
@@ -151,14 +146,12 @@ class InterleavedMEMRFile(BaseMEMRFile):
     def repeat_period(self):
         return self.get_setting('repeat_period')
 
-    #@lru_cache(maxsize=MAXSIZE)
     def get_elicitor(self, signal_name='elicitor_microphone'):
         repeats = self.get_repeats(signal_name=signal_name)
         elicitor_delay = self.get_setting('elicitor_envelope_start_time')
         m = repeats.columns >= elicitor_delay
         return repeats.loc[:, m].reset_index(['probe_t0', 't0'], drop=True)
 
-    #@lru_cache(maxsize=MAXSIZE)
     def get_silence(self, acoustic_delay=0.75e-3,
                     signal_name='probe_microphone', trim=0):
         probe_delay = self.get_setting('probe_delay')
@@ -215,7 +208,6 @@ class SimultaneousMEMRFile(BaseMEMRFile):
     def trial_duration(self):
         return self.get_setting('trial_duration')
 
-    #@lru_cache(maxsize=MAXSIZE)
     def get_velocity(self, signal_name='turntable_linear_velocity'):
         repeats = self.get_repeats(signal_name=signal_name)
         return repeats.reset_index(['probe_t0', 't0'], drop=True)
