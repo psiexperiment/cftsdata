@@ -761,6 +761,7 @@ sweep_expected_suffixes = [
     'MEMR.csv',
     'MEMR_total.csv',
     'MEMR.pdf',
+    'MEMR_block.pdf',
     'diagnostics.pdf',
 ]
 
@@ -780,7 +781,18 @@ def get_sweep_settings(fh):
     }
 
 
-def process_sweep_file(filename, manager, turntable_speed=1.25, **kwargs):
+def csd_to_swept_memr(r_csd_dt):
+    r_csd_mean = r_csd_dt.groupby('repeat').mean()
+    r_csd_sm = r_csd_mean.apply(sweep_csaps_smooth)
+    baseline = r_csd_sm.iloc[[0, 1, 2, -3, -2, -1]].mean()
+    r_csd_norm = r_csd_sm / baseline
+    memr_db = util.db(np.abs(r_csd_norm))
+    memr_db_total = util.db(np.abs(r_csd_norm - 1) + 1)
+    return r_csd_sm, memr_db, memr_db_total
+
+
+def process_sweep_file(filename, manager, turntable_speed=1.25,
+                       trials_per_block=5, **kwargs):
     '''
     Parameters
     ----------
@@ -809,14 +821,19 @@ def process_sweep_file(filename, manager, turntable_speed=1.25, **kwargs):
 
         r_csd = util.csd_df(probe, fs=fh.probe_fs, window='hann').loc[:, 4e3:32e3]
         r_csd_dt = r_csd.apply(sweep_detrend, fs=fh.probe_fs)
-        r_csd_mean = r_csd_dt.groupby('repeat').mean()
-        r_csd_sm = r_csd_mean.apply(sweep_csaps_smooth)
 
-        baseline = r_csd_sm.iloc[[0, 1, 2, -3, -2, -1]].mean()
-        r_csd_norm = r_csd_sm / baseline
-        memr_db = util.db(np.abs(r_csd_norm))
-        memr_db_total = util.db(np.abs(r_csd_norm - 1) + 1)
+        block_figs = []
+        n_blocks = int(np.ceil(fh.get_setting('trial_n') / trials_per_block))
+        for i in range(n_blocks):
+            lb = i * trials_per_block
+            ub = lb + trials_per_block
+            block = r_csd_dt.loc[lb:ub]
+            _, block_memr_db, block_memr_db_total = csd_to_swept_memr(block)
+            fig = plot_sweep_memr(block_memr_db, block_memr_db_total)
+            fig.suptitle(f'MEMR subset (trials {lb+1} to {ub+1})')
+            block_figs.append(fig)
 
+        r_csd_sm, memr_db, memr_db_total = csd_to_swept_memr(r_csd_dt)
         memr_fig = plot_sweep_memr(memr_db, memr_db_total)
         f_max = memr_db_total.loc[len(memr_db_total) // 2, :16e3].idxmax()
         dx_fig = plot_sweep_diagnostics(f_max, r_csd, r_csd_dt, r_csd_sm)
@@ -838,6 +855,7 @@ def process_sweep_file(filename, manager, turntable_speed=1.25, **kwargs):
         manager.save_fig(probe_fig, 'probe.pdf')
         manager.save_fig(elicitor_fig, 'elicitor.pdf')
         manager.save_fig(memr_fig, 'MEMR.pdf')
+        manager.save_figs(block_figs, 'MEMR_block.pdf')
         manager.save_fig(dx_fig, 'diagnostics.pdf')
 
 
