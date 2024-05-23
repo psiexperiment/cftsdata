@@ -1,4 +1,5 @@
 import datetime as dt
+from fnmatch import fnmatch
 import hashlib
 import json
 import shutil
@@ -36,6 +37,34 @@ def archive_data(path):
         shutil.rmtree(path)
     except IOError as e:
         print(e)
+
+
+def move_files(path, dest, pattern):
+    for file in path.iterdir():
+        if fnmatch(file.name, pattern):
+            file_dest = dest / file.parent.name / file.name
+            file_dest.parent.mkdir(exist_ok=True, parents=True)
+            file.rename(file_dest)
+
+
+def split_data():
+    '''
+    Main function for moving files out of experiment folder into a parallel
+    experiment structure.
+
+    For each CFTS experiment, move all files matching a pattern to a separate
+    directory that parallels the experiment data.
+    '''
+    import argparse
+    parser = argparse.ArgumentParser('cfts-split-data')
+    parser.add_argument('path', type=Path)
+    parser.add_argument('dest', type=Path)
+    parser.add_argument('pattern', type=str)
+    args = parser.parse_args()
+
+    dirs = [p for p in args.path.iterdir() if p.is_dir()]
+    for path in tqdm(dirs):
+        move_files(path, args.dest, args.pattern)
 
 
 def zip_data():
