@@ -144,7 +144,7 @@ def process_file(filename, manager, start_delay=1,
         manager.save_df(mic_rms_spl, 'SPL over time.csv')
 
 
-def main_folder():
+def main():
     import argparse
     parser = argparse.ArgumentParser('Summarize noise exposure data in folder')
     add_default_options(parser)

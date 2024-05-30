@@ -149,7 +149,7 @@ def process_file(filename, manager):
         manager.save_dataframe(psd, 'psd.csv')
 
 
-def main_folder():
+def main():
     import argparse
     parser = argparse.ArgumentParser('Summarize IEC data in folder')
     add_default_options(parser)

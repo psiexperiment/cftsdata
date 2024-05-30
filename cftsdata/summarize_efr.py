@@ -254,7 +254,7 @@ def process_file(filename, manager, segment_duration=0.5, n_draw=128,
     return True
 
 
-def main_folder():
+def main():
     import argparse
     parser = argparse.ArgumentParser('Summarize EFR in folder')
     add_default_options(parser)

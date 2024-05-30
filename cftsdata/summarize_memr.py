@@ -859,9 +859,9 @@ def process_sweep_file(filename, manager, turntable_speed=1.25,
         manager.save_fig(dx_fig, 'diagnostics.pdf')
 
 
-def main_simultaneous_folder():
+def main_valero():
     import argparse
-    parser = argparse.ArgumentParser('Summarize simultaneous MEMR data in folder')
+    parser = argparse.ArgumentParser('Summarize Valero MEMR data in folder')
     add_default_options(parser)
     args = vars(parser.parse_args())
     process_files(glob_pattern='**/*memr_simultaneous*',
@@ -869,9 +869,9 @@ def main_simultaneous_folder():
                   expected_suffixes=sim_expected_suffixes, **args)
 
 
-def main_interleaved_folder():
+def main_keefe():
     import argparse
-    parser = argparse.ArgumentParser('Summarize interleaved MEMR data in folder')
+    parser = argparse.ArgumentParser('Summarize Keefe MEMR data in folder')
     add_default_options(parser)
     args = vars(parser.parse_args())
     process_files(glob_pattern='**/*memr_interleaved*',
@@ -879,17 +879,7 @@ def main_interleaved_folder():
                   expected_suffixes=int_expected_suffixes, **args)
 
 
-def main_interleaved_folder_threshold():
-    import argparse
-    parser = argparse.ArgumentParser('Summarize interleaved MEMR data in folder')
-    add_default_options(parser)
-    args = vars(parser.parse_args())
-    process_files(glob_pattern='**/*memr_interleaved*',
-                  fn=process_interleaved_file_threshold,
-                  expected_suffixes=int_threshold_expected_suffixes, **args)
-
-
-def main_sweep_folder():
+def main_sweep():
     import argparse
     parser = argparse.ArgumentParser('Summarize MEMR sweep data in folder')
     add_default_options(parser)

@@ -300,7 +300,7 @@ def process_file(filename, manager, offset=-1e-3, duration=10e-3,
     return True
 
 
-def main_folder():
+def main():
     parser = argparse.ArgumentParser('Filter and summarize ABR files in folder')
     add_default_options(parser)
     args = vars(parser.parse_args())

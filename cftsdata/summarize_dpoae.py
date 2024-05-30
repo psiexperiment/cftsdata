@@ -244,7 +244,7 @@ def process_file_dpgram(filename, manager):
         plt.close('all')
 
 
-def main_folder_dpoae():
+def main_dpoae():
     import argparse
     parser = argparse.ArgumentParser('Summarize DPOAE IO data in folder')
     add_default_options(parser)
@@ -254,7 +254,7 @@ def main_folder_dpoae():
                   expected_suffixes=dpoae_expected_suffixes, **args)
 
 
-def main_folder_dpgram():
+def main_dpgram():
     import argparse
     parser = argparse.ArgumentParser('Summarize DPgram data in folder')
     add_default_options(parser)
