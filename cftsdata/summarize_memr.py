@@ -32,13 +32,6 @@ int_expected_suffixes = [
 ]
 
 
-int_threshold_expected_suffixes = [
-    'raw_levels.csv',
-    'raw_corr.csv',
-]
-
-
-
 def plot_stim_train(epochs, settings=None, ax=None, color='k'):
     if ax is None:
         figsize = 6, 1 * len(epochs)
@@ -293,55 +286,6 @@ def calc_memr_amplitude(memr_db, span='conventional'):
     memr_amplitude.attrs['span'] = span_options[span]
     memr_amplitude.columns.name = 'span'
     return memr_amplitude
-
-
-def interleaved_memr_threshold_stats(probe, silence, fs):
-    # Calculate the mean click difference
-    d_probe = probe.loc[1:] - probe.loc[0]
-    d_silence = silence.loc[1:] - silence.loc[0]
-
-    d_probe_csd = util.csd_df(d_probe, fs=fs).loc[:, 4e3:32e3]
-    d_silence_csd = util.csd_df(d_silence, fs=fs).loc[:, 4e3:32e3]
-    d_probe_level = util.db(np.abs(d_probe_csd).apply(util.rms_rfft, axis=1))
-    d_silence_level = util.db(np.abs(d_silence_csd).apply(util.rms_rfft, axis=1))
-
-    d_levels = pd.concat((d_probe_level, d_silence_level), keys=('probe', 'silence'), names=['interval'])
-    #crit1 = d_levels.loc['probe'] > (d_levels.loc['silence'] + 6)
-    #crit1_n = crit1.groupby('elicitor_level').agg(['size', 'sum'])
-
-    def complex_corr(x):
-        i = np.triu_indices(4, 1)
-        power = np.abs(x)
-        phase = np.angle(x)
-        real = np.real(x)
-        imag = np.imag(x)
-        df = pd.DataFrame({
-            'power': np.corrcoef(power)[i],
-            'phase': np.corrcoef(phase)[i],
-            'real': np.corrcoef(real)[i],
-            'imag': np.corrcoef(imag)[i],
-        })
-        df.columns.name = 'measure'
-        df.index.name = 'pair'
-        return df
-
-    cols = ['elicitor_level', 'elicitor_polarity', 'trial']
-    corr = d_probe_csd.groupby(cols).apply(complex_corr)
-    #crit2 = corr[['power', 'phase']] > 0.7
-    #crit2_n = crit2.stack().groupby('elicitor_level').agg(['size', 'sum'])
-    return d_levels, corr
-
-
-def process_interleaved_file_threshold(filename, manager, turntable_speed=1.25, **kwargs):
-    with manager.create_cb() as cb:
-        fh = InterleavedMEMRFile(filename)
-        probe = fh.get_probe()
-        silence = fh.get_silence()
-        probe_valid = fh.valid_epochs(probe, turntable_speed=turntable_speed)
-        silence_valid = fh.valid_epochs(silence, turntable_speed=turntable_speed)
-        levels, corr = interleaved_memr_threshold_stats(probe_valid, silence_valid, fh.probe_fs)
-        manager.save_df(levels.rename('level'), 'raw_levels.csv')
-        manager.save_df(corr.stack().rename('corr'), 'raw_corr.csv')
 
 
 def process_interleaved_file(filename, manager, turntable_speed=1.25, **kwargs):
