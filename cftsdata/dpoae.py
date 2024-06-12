@@ -115,14 +115,15 @@ class DPOAEFile(Recording):
         data['dp_end'] = ts_end
         return data
 
-    def iter_segments(self):
+    def iter_segments(self, microphone='system_microphone'):
+        mic = getattr(self, microphone)
         for _, row in self.results.iterrows():
             lb = row['dp_start']
             ub = row['dp_end']
             if ub < lb:
                 log.warning('Incomplete DPOAE segment')
                 continue
-            segment = self.system_microphone.get_segment(lb, 0, ub-lb, allow_partial=True)
+            segment = mic.get_segment(lb, 0, ub-lb, allow_partial=True)
             yield row, segment
 
     def get_segment(self, f2_frequency, f2_level, microphone='system_microphone'):
