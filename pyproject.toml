@@ -41,7 +41,7 @@ summarize-keefe-memr = "cftsdata.summarize_memr:main_keefe"
 summarize-keefe-memr-th = "cftsdata.summarize_memr_th:main_keefe_th_folder"
 summarize-valero-memr = "cftsdata.summarize_memr:main_valero"
 summarize-sweep-memr = "cftsdata.summarize_memr:main_sweep"
-summarize-noise-exposure = "cftsdata.summarize_noise_exposure:main_folder"
+summarize-noise-exposure = "cftsdata.summarize_noise_exposure:main"
 
 [build-system]
 requires = ["setuptools>=61.2", "wheel", "setuptools_scm[toml]>=3.4.3"]
