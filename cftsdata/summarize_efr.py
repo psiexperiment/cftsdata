@@ -6,7 +6,7 @@ from scipy import signal
 from psiaudio import util
 
 from .efr import EFR
-from .util import add_default_options, DatasetManager, process_files
+from .util import add_default_options, process_files
 
 from psiaudio.efr import efr_bs_verhulst
 
