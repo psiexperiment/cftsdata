@@ -392,11 +392,7 @@ class Dataset:
         return pd.DataFrame(result)
 
     def load_abr_eeg_spectrum(self, **kwargs):
-        def _load_abr_eeg_spectrum(x):
-            df = pd.read_csv(x, index_col=0)
-            df.columns = ['psd']
-            return df
-        return self.load(_load_abr_eeg_spectrum,
+        return self.load(lambda x: pd.read_csv(x),
                           '**/*ABR eeg spectrum.csv',
                           parse_psi_filename, **kwargs)
 
