@@ -122,7 +122,8 @@ class ABRFile(Recording):
 
     def get_random_segments(self, n, offset=0, duration=8.5e-3,
                             detrend='constant', downsample=None,
-                            reject_threshold='saved', reject_mode='absolute'):
+                            reject_threshold='saved', reject_mode='absolute',
+                            cb=None):
         '''
         Extract random segments from filtered EEG
 
@@ -133,7 +134,7 @@ class ABRFile(Recording):
         {common_docstring}
         '''
         fn = self.eeg.get_random_segments
-        result = fn(n, offset, duration, detrend, downsample=downsample)
+        result = fn(n, offset, duration, detrend, downsample=downsample, cb=cb)
         return self._apply_reject(result, reject_threshold, reject_mode)
 
     def get_epochs_filtered(self, filter_lb=300, filter_ub=3000,
@@ -167,7 +168,7 @@ class ABRFile(Recording):
                                      pad_duration=10e-3,
                                      downsample=None,
                                      reject_threshold='saved',
-                                     reject_mode='absolute'):
+                                     reject_mode='absolute', cb=None):
         '''
         Extract random segments from EEG
 
@@ -180,7 +181,7 @@ class ABRFile(Recording):
         '''
         fn = self.eeg.get_random_segments_filtered
         result = fn(n, offset, duration, filter_lb, filter_ub, filter_order,
-                    detrend, pad_duration, downsample=downsample)
+                    detrend, pad_duration, downsample=downsample, cb=cb)
         return self._apply_reject(result, reject_threshold, reject_mode)
 
     def _apply_reject(self, result, reject_threshold, reject_mode):
