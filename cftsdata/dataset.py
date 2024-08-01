@@ -422,22 +422,6 @@ class Dataset:
         '''
         self._check_efr_params(efr_type, method)
         suffix = ' linear' if method.lower() == 'verhulst' else ''
-        glob = f'**/*efr_{efr_type.lower()}*EFR PSD{suffix}.csv'
-
-
-    def load_efr_harmonics(self, efr_type, method, **kwargs):
-        '''
-        Load EFR harmonics
-
-        Parameters
-        ---------
-        efr_type : {'SAM', 'RAM'}
-            EFR to load harmonics for
-        method : {'Verhulst', 'Bharadwaj'}
-            Method for calculating EFR amplitude
-        '''
-        self._check_efr_params(efr_type, method)
-        suffix = ' linear' if method.lower() == 'verhulst' else ''
         glob = f'**/*efr_{efr_type.lower()}*EFR harmonics{suffix}.csv'
         return self.load(load_efr_harmonics, glob, parse_psi_filename, **kwargs)
 
