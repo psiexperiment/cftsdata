@@ -249,3 +249,44 @@ def invert_eeg_data():
                 archive_data(archive_path)
                 zip_archive_path = archive_path.with_suffix('.zip')
                 shutil.copyfile(zip_archive_path, args.path)
+
+
+def merge_pdf():
+    '''
+    Merge PDFs matching filename pattern into a single file for review
+    '''
+    from pypdf import PdfReader, PdfWriter
+    from pypdf.annotations import FreeText
+    from pypdf.errors import PdfReadError
+    import argparse
+
+    parser = argparse.ArgumentParser('cfts-merge-pdf')
+    parser.add_argument('path', type=Path)
+    parser.add_argument('pattern', type=str)
+    parser.add_argument('output', type=Path)
+    parser.add_argument('--delete-bad', action='store_true')
+    args = parser.parse_args()
+
+    if args.output.exists():
+        raise IOError('Output file exists')
+
+    # Make sure we can create the file before we get too far along.
+    args.output.touch()
+    args.output.unlink()
+
+    pattern = args.pattern
+    if not pattern.endswith('.pdf'):
+        pattern = pattern + '.pdf'
+    if not pattern.startswith('**/'):
+        pattern = '**/' + pattern
+
+    merger = PdfWriter()
+    for filename in args.path.glob(pattern):
+        try:
+            fh = PdfReader(filename)
+            merger.append(fh, filename.stem)
+        except PdfReadError:
+            if args.delete_bad:
+                filename.unlink()
+            print(filename)
+    merger.write(args.output)
