@@ -217,10 +217,12 @@ class BaseDatasetManager:
 
     def save_dict(self, d, suffix):
         filename = self.get_proc_filename(suffix)
-        filename.write_text(json.dumps(d))
+        filename.write_text(json.dumps(d, indent=4))
 
-    def save_fig(self, figure, suffix):
+    def save_fig(self, figure, suffix, add_filename=True):
         filename = self.get_proc_filename(suffix)
+        if add_filename:
+            figure.suptitle(filename.stem)
         figure.savefig(filename, bbox_inches='tight')
 
     def save_figs(self, figures, suffix):
