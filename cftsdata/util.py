@@ -89,7 +89,7 @@ def process_files(glob_pattern, fn, folder, cb='tqdm', mode='process',
                 manager.clear(expected_suffixes)
                 return True
         except Exception as e:
-            return False
+            raise
         return False
 
     if logging_level is not None:
