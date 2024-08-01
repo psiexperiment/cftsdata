@@ -34,23 +34,6 @@ def archive_data(path):
         print(e)
 
 
-def split_data():
-    '''
-    Main function for moving files out of experiment folder into a parallel
-    experiment structure.
-
-    For each CFTS experiment, move all files matching a pattern to a separate
-    directory that parallels the experiment data.
-    '''
-    import argparse
-    parser = argparse.ArgumentParser('cfts-split-data')
-    parser.add_argument('path', type=Path)
-    parser.add_argument('dest', type=Path)
-    parser.add_argument('filters', nargs='+')
-    args = parser.parse_args()
-    print(args)
-
-
 def zip_data():
     '''
     Main function for creating zipfiles from raw CFTS data
