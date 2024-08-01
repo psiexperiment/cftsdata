@@ -153,6 +153,15 @@ class Dataset:
         self.raw_ephys_path = self.ephys_path
 
     def load_raw(self, cb, etype=None, **kwargs):
+        '''
+        Facilitate loading information from raw data zipfile
+
+        Parameters
+        ----------
+        cb : callable
+            Takes a single argument, the zip filename, and returns a dictionary
+            or dataframe.
+        '''
         wildcard = '**/*.zip' if etype is None else f'**/*{etype}*.zip'
         return self.load(cb, wildcard, data_path=self.raw_ephys_path, **kwargs)
 
