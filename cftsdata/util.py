@@ -7,11 +7,32 @@ import os
 from pathlib import Path
 
 from joblib import Parallel, delayed
+from tqdm.auto import tqdm
 
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as plt
 
 from psiaudio.util import get_cb
+
+
+class ProgressParallel(Parallel):
+    '''
+    Provide a progressbar to track status of parallel jobs
+    '''
+    def __init__(self, use_tqdm=True, total=None, *args, **kwargs):
+        self._use_tqdm = use_tqdm
+        self._total = total
+        super().__init__(*args, **kwargs)
+
+    def __call__(self, *args, **kwargs):
+        with tqdm(disable=not self._use_tqdm, total=self._total) as self._pbar:
+            return Parallel.__call__(self, *args, **kwargs)
+
+    def print_progress(self):
+        if self._total is None:
+            self._pbar.total = self.n_dispatched_tasks
+        self._pbar.n = self.n_completed_tasks
+        self._pbar.refresh()
 
 
 class CallbackManager:
@@ -45,23 +66,30 @@ def process_files(glob_pattern, fn, folder, cb='tqdm', mode='process',
                   halt_on_error=False, logging_level=None,
                   expected_suffixes=None, n_jobs=1):
 
+    # Override callback if we are running in parallel otherwise it's messy
+    if n_jobs > 1:
+        cb = None
+
     def _process_file(filename):
         nonlocal cb
         nonlocal mode
         nonlocal expected_suffixes
 
-        manager = DatasetManager(filename, cb=cb)
-        if mode == 'process' and manager.is_processed(expected_suffixes):
-            pass
-        elif mode == 'process' and not manager.is_processed(expected_suffixes):
-            fn(filename, manager=manager)
-            return True
-        elif mode == 'reprocess':
-            fn(filename, manager=manager)
-            return True
-        elif mode == 'clear':
-            manager.clear(expected_suffixes)
-            return True
+        try:
+            manager = DatasetManager(filename, cb=cb)
+            if mode == 'process' and manager.is_processed(expected_suffixes):
+                pass
+            elif mode == 'process' and not manager.is_processed(expected_suffixes):
+                fn(filename, manager=manager)
+                return True
+            elif mode == 'reprocess':
+                fn(filename, manager=manager)
+                return True
+            elif mode == 'clear':
+                manager.clear(expected_suffixes)
+                return True
+        except Exception as e:
+            return False
         return False
 
     if logging_level is not None:
@@ -114,7 +142,7 @@ def process_files(glob_pattern, fn, folder, cb='tqdm', mode='process',
     if n_jobs == 1:
         print(f'Processed {len(processed)} files with {len(errors)} errors. {len(skipped)} files were skipped.')
     else:
-        result = Parallel(n_jobs=4)(jobs)
+        result = ProgressParallel(n_jobs=n_jobs)(jobs)
         n_processed = sum(result)
         n_skipped = len(result) - n_processed
         print(f'Processed {n_processed} files. {n_skipped} files were skipped.')
