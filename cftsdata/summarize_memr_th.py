@@ -23,26 +23,33 @@ keefe_th_expected_suffixes = [
 
 
 # Functions derived from Suthakar and Liberman 2019
-sigmoid = lambda x, a, b, c, d: a + ((b-a) / (1 + np.exp(d * (c-x))))
+sigmoid = lambda x, a, b, c, d: a + b / (1 + np.exp(np.exp(d) * (c-x)))
 power = lambda x, a, b, c: a * x ** b + c
 
 
-def fit_sigmoid(series, th_criterion, asymptote_criterion=None):
-    x = series.index.values
-    y = series.values
+def get_fit_text(a, b, c, d):
+    return fr'${a:.2f} + \frac{{{b:.2f}}}{{1 + e^{{e^{{{d:.2f}}} \cdot ({c:.2f} - x)}}}}$'
+
+
+def fit_sigmoid(x, y, th_criterion, asymptote_criterion=None):
     def fit_fn(p):
         nonlocal x
         nonlocal y
         return y - sigmoid(x, *p)
-    guess = [min(y), max(y), np.mean(x), 1]
+    x = np.asarray(x, np.float64)
+    y = np.asarray(y, np.float64)
+    guess = [min(y), max(y), np.mean(x), -10]
+    # Clip the last parameter to 0 to limit the slope of the sigmoid to
+    # reasonable values for the elicitor level scale.
     bounds = (
         [0, 0, min(x), -np.inf],
-        [np.inf, np.inf, max(x), np.inf],
+        [np.inf, np.inf, max(x), 0],
     )
-    result = optimize.least_squares(fit_fn, guess, bounds=bounds)
+    result = optimize.least_squares(fit_fn, guess, bounds=bounds,
+                                    loss='soft_l1', max_nfev=1000)
     x_pred = np.linspace(min(x), max(x), 1000)
     fit = pd.Series(sigmoid(x_pred, *result.x), index=x_pred)
-    fit.index.name = series.index.name
+    fit.index.name = 'elicitor_level'
 
     th = np.interp(th_criterion, fit.values, fit.index)
     if not result.success:
@@ -52,6 +59,8 @@ def fit_sigmoid(series, th_criterion, asymptote_criterion=None):
         'fit': fit,
         'th_criterion': th_criterion,
         'threshold': th,
+        'formula': get_fit_text(*result.x),
+
     }
 
     if asymptote_criterion is not None:
@@ -122,7 +131,7 @@ def process_keefe_th(filename, manager, freq_lb=5.6e3, freq_ub=16e3,
         probe_csd = util.csd_df(probe_valid, fs=fh.probe_fs).loc[:, freq_lb:freq_ub]
         t2_2samp = probe_csd.groupby('elicitor_level') \
             .apply(compute_ht2_2samp, train=probe_csd.loc[0])
-        t2_individual = probe_csd.loc[1:].groupby('elicitor_level') \
+        t2_individual = probe_csd.loc[1:].groupby('elicitor_level', group_keys=False) \
             .apply(compute_ht2_individual, train=probe_csd.loc[0])
 
         # Calculate threshold using the minimum
@@ -161,7 +170,7 @@ def process_keefe_th(filename, manager, freq_lb=5.6e3, freq_ub=16e3,
         axes[0, 2].plot(average_memr.index, average_memr.values, 'k-', label='Average')
         axes[0, 2].plot(max_memr.index, max_memr.values, '-', color='seagreen', label='Max')
         axes[0, 2].set_xlabel('Elicitor Level')
-        axes[0, 2].set_ylabel('MEMR amplitude')
+        axes[0, 2].set_ylabel('MEMR amplitude (dB SPL)')
         axes[0, 2].legend()
         axes[0, 2].axis(ymin=0, ymax=3)
         axes[0, 2].set_title('Total MEMR amplitude')
@@ -169,20 +178,31 @@ def process_keefe_th(filename, manager, freq_lb=5.6e3, freq_ub=16e3,
         plot_t2(t2_individual, t2_2samp['T2'], axes[0, 3], color_map)
         axes[0, 3].set_title('Test for deviation from elicitor-off')
 
-        average_memr_fit = fit_sigmoid(average_memr, 0.25, 80)
         axes[1, 0].plot(average_memr, 'ko')
-        axes[1, 0].plot(average_memr_fit['fit'], 'r-')
-        axes[1, 0].axvline(average_memr_fit['threshold'], color='r', ls=':')
-        axes[1, 0].axhline(average_memr_fit['asymptote'], color='r', ls=':')
-        axes[1, 0].set_xlabel('Elicitor level')
         axes[1, 0].set_title('Average MEMR amplitude')
+        axes[1, 0].set_ylabel('MEMR amplitude (dB SPL)')
+        try:
+            average_memr_fit = fit_sigmoid(average_memr.index, average_memr, 0.25, 80)
+            axes[1, 0].text(0.05, 0.95, average_memr_fit['formula'],
+                            transform=axes[1, 0].transAxes, ha='left', va='top')
+            axes[1, 0].plot(average_memr_fit['fit'], 'r-')
+            axes[1, 0].axvline(average_memr_fit['threshold'], color='r', ls=':')
+            axes[1, 0].axhline(average_memr_fit['asymptote'], color='r', ls=':')
+        except ValueError:
+            average_memr_fit = {'threshold': np.nan}
 
-        max_memr_fit = fit_sigmoid(max_memr, 0.5, 80)
         axes[1, 1].plot(max_memr, 'ko')
-        axes[1, 1].plot(max_memr_fit['fit'], 'r-')
-        axes[1, 1].axvline(max_memr_fit['threshold'], color='r', ls=':')
-        axes[1, 1].axhline(max_memr_fit['asymptote'], color='r', ls=':')
         axes[1, 1].set_title('Max MEMR amplitude')
+        axes[1, 1].set_ylabel('MEMR amplitude (dB SPL)')
+        try:
+            max_memr_fit = fit_sigmoid(max_memr.index, max_memr, 0.5, 80)
+            axes[1, 1].text(0.05, 0.95, max_memr_fit['formula'],
+                            transform=axes[1, 1].transAxes, ha='left', va='top')
+            axes[1, 1].plot(max_memr_fit['fit'], 'r-')
+            axes[1, 1].axvline(max_memr_fit['threshold'], color='r', ls=':')
+            axes[1, 1].axhline(max_memr_fit['asymptote'], color='r', ls=':')
+        except ValueError:
+            max_memr_fit = {'threshold': np.nan}
 
         memr_amplitude = pd.DataFrame({
             'max': max_memr,
@@ -194,21 +214,37 @@ def process_keefe_th(filename, manager, freq_lb=5.6e3, freq_ub=16e3,
             'mean': average_memr_fit['fit'],
         })
 
-        t2_min_fit = fit_sigmoid(t2_min, t2_criterion)
-        axes[1, 2].plot(t2_min, 'ko')
-        axes[1, 2].plot(t2_min_fit['fit'], 'r-')
-        axes[1, 2].axvline(t2_min_fit['threshold'], color='r', ls=':')
-        axes[1, 2].set_title('Minimum $T^2$ statistic')
+        t2i = t2_individual.rename('t2').reset_index()[['elicitor_level', 't2']]
+        axes[1, 2].plot(t2i['elicitor_level'], t2i['t2'], 'ko')
+        axes[1, 2].set_title('Individual $T^2$ statistic')
+        axes[1, 2].set_ylabel('$T^2$ statistic')
+        try:
+            t2_min_fit = fit_sigmoid(t2i['elicitor_level'], t2i['t2'], t2_criterion)
+            axes[1, 2].text(0.05, 0.95, t2_min_fit['formula'],
+                            transform=axes[1, 2].transAxes, ha='left', va='top')
+            axes[1, 2].plot(t2_min_fit['fit'], 'r-')
+            axes[1, 2].axvline(t2_min_fit['threshold'], color='r', ls=':')
+        except ValueError:
+            t2_min_fit = {'threshold': np.nan}
 
         # Calculate the equivalent F-value for the criterion p-value
-        df = t2_2samp['df'].iloc[0]
-        crit = chi2.isf(0.01, df=df)
-        t2_2samp_fit = fit_sigmoid(t2_2samp['F'], crit)
         axes[1, 3].plot(t2_2samp['F'], 'ko')
-        axes[1, 3].plot(t2_2samp_fit['fit'], 'r-')
-        axes[1, 3].axvline(t2_2samp_fit['threshold'], color='r', ls=':')
         axes[1, 3].set_title('2-sample $F$ statistic')
-        axes[1, 3].axhline(crit, color='r', ls=':')
+        axes[1, 3].set_ylabel('$F$ statistic')
+        try:
+            df = t2_2samp['df'].iloc[0]
+            t2_2samp_p_crit = chi2.isf(0.5, df=df)
+            t2_2samp_fit = fit_sigmoid(t2_2samp.index, t2_2samp['F'], t2_2samp_p_crit)
+            axes[1, 3].text(0.05, 0.95, t2_2samp_fit['formula'],
+                            transform=axes[1, 3].transAxes, ha='left', va='top')
+            axes[1, 3].plot(t2_2samp_fit['fit'], 'r-')
+            axes[1, 3].axvline(t2_2samp_fit['threshold'], color='r', ls=':')
+            axes[1, 3].axhline(t2_2samp_p_crit, color='r', ls=':')
+        except ValueError:
+            t2_2samp_fit = {'threshold': np.nan}
+
+        for ax in axes[-1]:
+            ax.set_xlabel('Elicitor Level (dB SPL)')
 
         manager.save_df(memr_amplitude, 'raw amplitude.csv')
         manager.save_df(fitted_memr_amplitude, 'fitted amplitude.csv')
@@ -222,6 +258,7 @@ def process_keefe_th(filename, manager, freq_lb=5.6e3, freq_ub=16e3,
             'max_asymptote': max_memr_fit['asymptote'],
             't2_min_threshold': t2_min_fit['threshold'],
             't2_2samp_threshold': t2_2samp_fit['threshold'],
+            't2_2samp_threshold_crit': t2_2samp_p_crit,
         }, 'HT2 threshold.json')
 
 
