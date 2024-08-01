@@ -265,15 +265,11 @@ def calc_memr_amplitude(memr_db, span='conventional'):
             'P1': ('P', 4e3, 8e3),
             'N1': ('N', 5.6e3, 11e3),
             'P2': ('P', 8e3, 16e3),
-            'N2': ('N', 11.3e3, 22.6e3),
-            'P3': ('P', 16e3, 32e3),
         },
         'total': {
             'P1': ('P', 4e3, 8e3),
             'P2': ('P', 5.6e3, 11e3),
             'P3': ('P', 8e3, 16e3),
-            'P4': ('P', 11.3e3, 22.6e3),
-            'P5': ('P', 16e3, 32e3),
         },
     }
     memr_amplitude = {}
