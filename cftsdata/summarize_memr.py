@@ -284,7 +284,8 @@ def calc_memr_amplitude(memr_db, span='conventional'):
     return memr_amplitude
 
 
-def process_interleaved_file(filename, manager, turntable_speed=1.25, **kwargs):
+def process_interleaved_file(filename, manager, turntable_speed=1.25,
+                             min_corr=0.5, **kwargs):
     '''
     Parameters
     ----------
@@ -292,6 +293,11 @@ def process_interleaved_file(filename, manager, turntable_speed=1.25, **kwargs):
         If None, use value saved in settings. Default speed of 1.25 is the
         maximum speed we have been using in our experiments and seems to be
         sufficiently robust to exclude most artifacts.
+    min_corr : {None, float}
+        If None, use value saved in settings. Rejects the trial if the minimum
+        correlation between individual probes in the train is less than this
+        value. Lack of correlations usually suggests that an artifact crept
+        into the data.
     '''
     with manager.create_cb() as cb:
         fh = InterleavedMEMRFile(filename)
@@ -348,7 +354,11 @@ def process_interleaved_file(filename, manager, turntable_speed=1.25, **kwargs):
         probe_spl = probe_cal.get_db(util.psd_df(probe, fs=fh.probe_microphone.fs, detrend='constant'))
         silence_spl = probe_cal.get_db(util.psd_df(silence, fs=fh.probe_microphone.fs, detrend='constant'))
 
-        probe_valid = fh.valid_epochs(probe, turntable_speed=turntable_speed)
+        # Pull out only the trials that meet the artifact reject criterion.
+        probe_valid = fh.valid_epochs(probe,
+                                      turntable_speed=turntable_speed,
+                                      min_corr=min_corr)
+        silence_valid = probe_valid.reindex(index=probe_valid.index)
         silence_valid = fh.valid_epochs(silence, turntable_speed=turntable_speed)
         probe_csd = util.csd_df(probe_valid, fs=fh.probe_fs)
         probe_norm = probe_csd.loc[1:] / probe_csd.loc[0]

@@ -182,8 +182,18 @@ class InterleavedMEMRFile(BaseMEMRFile):
         valid.name = 'valid'
         return valid
 
-    def valid_epochs(self, epochs, trial_n=None, turntable_speed=None):
-        valid = self.get_valid_epoch_mask(turntable_speed)
+    def valid_epochs(self, epochs, trial_n=None, turntable_speed=None,
+                     min_corr=None):
+
+        speed_valid = self.get_valid_epoch_mask(turntable_speed)
+
+        if min_corr is None:
+            min_corr = self.get_setting('min_probe_corr')
+        corr = epochs.groupby(['elicitor_polarity', 'elicitor_level', 'trial']) \
+            .apply(lambda x: np.corrcoef(x.values).min())
+        corr_valid = corr >= min_corr
+
+        valid = corr_valid & speed_valid
 
         if trial_n is None:
             trial_n = int(self.get_setting('trial_n') / 2)
