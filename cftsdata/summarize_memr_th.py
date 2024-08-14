@@ -17,8 +17,9 @@ keefe_th_expected_suffixes = [
     'HT2 individual.csv',
     'HT2 2samp.csv',
     'HT2 threshold.json',
-    'raw amplitude.csv',
-    'fitted amplitude.csv',
+    'HT2 processing settings.json',
+    'HT2 raw amplitude.csv',
+    'HT2 fitted amplitude.csv',
 ]
 
 
@@ -115,12 +116,14 @@ def plot_t2(t2_individual, t2_2samp, ax, color_map):
 
 
 def process_keefe_th(filename, manager, freq_lb=5.6e3, freq_ub=16e3,
-                     t2_criterion=1000):
+                     t2_criterion=1000, turntable_speed=1.25, min_corr=0.5):
     with manager.create_cb():
         fh = memr.InterleavedMEMRFile(filename)
 
         # Load only the valid probes
-        probe_valid = fh.valid_epochs(fh.get_probe())
+        probe_valid = fh.valid_epochs(fh.get_probe(),
+                                      turntable_speed=turntable_speed,
+                                      min_corr=min_corr)
 
         # Generate the color mapping that we will use for plotting
         elicitor_levels = probe_valid.index.unique('elicitor_level')
@@ -246,8 +249,8 @@ def process_keefe_th(filename, manager, freq_lb=5.6e3, freq_ub=16e3,
         for ax in axes[-1]:
             ax.set_xlabel('Elicitor Level (dB SPL)')
 
-        manager.save_df(memr_amplitude, 'raw amplitude.csv')
-        manager.save_df(fitted_memr_amplitude, 'fitted amplitude.csv')
+        manager.save_df(memr_amplitude, 'HT2 raw amplitude.csv')
+        manager.save_df(fitted_memr_amplitude, 'HT2 fitted amplitude.csv')
         manager.save_fig(figure, 'HT2 threshold diagnostics.pdf')
         manager.save_df(t2_individual.rename('statistic'), 'HT2 individual.csv')
         manager.save_df(t2_2samp, 'HT2 2samp.csv')
@@ -260,6 +263,12 @@ def process_keefe_th(filename, manager, freq_lb=5.6e3, freq_ub=16e3,
             't2_2samp_threshold': t2_2samp_fit['threshold'],
             't2_2samp_threshold_crit': t2_2samp_p_crit,
         }, 'HT2 threshold.json')
+        manager.save_dict({
+            'min_corr': min_corr,
+            'turntable_speed': turntable_speed,
+            'freq_lb': freq_lb,
+            'freq_ub': freq_ub,
+        }, 'HT2 processing settings.json')
 
 
 def main_keefe_th():
