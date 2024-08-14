@@ -359,7 +359,7 @@ def process_interleaved_file(filename, manager, turntable_speed=1.25,
                                       turntable_speed=turntable_speed,
                                       min_corr=min_corr)
         silence_valid = probe_valid.reindex(index=probe_valid.index)
-        silence_valid = fh.valid_epochs(silence, turntable_speed=turntable_speed)
+
         probe_csd = util.csd_df(probe_valid, fs=fh.probe_fs)
         probe_norm = probe_csd.loc[1:] / probe_csd.loc[0]
         flb = settings['probe_fl']
