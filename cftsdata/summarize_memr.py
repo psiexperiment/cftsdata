@@ -29,6 +29,7 @@ int_expected_suffixes = [
     'probe.pdf',
     'elicitor.pdf',
     'epoch waveform.pdf',
+    'processing settings.json',
 ]
 
 
@@ -402,6 +403,10 @@ def process_interleaved_file(filename, manager, turntable_speed=1.25,
         manager.save_df(memr_amplitude.stack().rename('amplitude'), 'MEMR_amplitude.csv')
         manager.save_df(memr_amplitude_total.stack().rename('amplitude'), 'MEMR_amplitude_total.csv')
         manager.save_df(elicitor_level, 'elicitor level.csv', index=False)
+        manager.save_dict({
+            'min_corr': min_corr,
+            'turntable_speed': turntable_speed,
+        }, 'processing settings.json')
 
 
 sim_expected_suffixes = [
