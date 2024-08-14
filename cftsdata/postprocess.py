@@ -16,6 +16,7 @@ import cftsdata.version
 
 from .dataset import Dataset
 
+
 def archive_data(path):
     '''
     Creates a zip archive of the specified path, validates the MD5sum of each
@@ -281,7 +282,10 @@ def merge_pdf():
         pattern = '**/' + pattern
 
     merger = PdfWriter()
-    for filename in args.path.glob(pattern):
+    for filename in tqdm(args.path.glob(pattern)):
+        if '_exclude' in str(filename):
+            # Don't process files hidden under the _exclude folders.
+            continue
         try:
             fh = PdfReader(filename)
             merger.append(fh, filename.stem)
