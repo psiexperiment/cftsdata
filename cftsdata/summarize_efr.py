@@ -108,10 +108,12 @@ def process_file(filename, manager, segment_duration=0.5, n_draw=128,
             # Plot the EEG PSD
             n = len(eeg_df) * n_segments
             eeg = eeg_df.values.reshape((n, -1))
-            eeg_psd = util.db(util.psd_df(eeg, fs=actual_fs, window='hann').mean(axis=0))
+            eeg_psd = util.db(util.psd_df(eeg.mean(axis=0), fs=actual_fs, window='hann'))
             axes[0, 1].plot(eeg_psd, color='k')
 
-            eeg_bs = util.psd_bootstrap_loop(eeg, fs=actual_fs, n_draw=n_draw, n_bootstrap=n_bootstrap, callback=None)
+            eeg_bs = util.psd_bootstrap_loop(eeg, fs=actual_fs, n_draw=n_draw,
+                                             n_bootstrap=n_bootstrap,
+                                             callback=None)
             eeg_bs_all.append(eeg_bs)
             keys.append((fm, fc))
 
