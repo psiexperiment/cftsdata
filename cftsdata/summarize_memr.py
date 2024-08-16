@@ -286,7 +286,7 @@ def calc_memr_amplitude(memr_db, span='conventional'):
 
 
 def process_interleaved_file(filename, manager, turntable_speed=1.25,
-                             min_corr=0.5, **kwargs):
+                             min_corr=0.9, **kwargs):
     '''
     Parameters
     ----------
