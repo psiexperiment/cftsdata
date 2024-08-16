@@ -482,10 +482,11 @@ class Dataset:
         return self.load(partial(load_memr_amplitude, repeat=repeat, span=span),
                          glob, parse_psi_filename, **kwargs)
 
-    def load_memr_corr(self, memr):
+    def load_memr_metrics(self, memr, method='HT2'):
         etype = self._get_memr_etype(memr)
-        glob = f'**/*{etype} raw_corr.csv'
-        return self.load(lambda x: pd.read_csv(x), glob, parse_psi_filename)
+        glob = f'**/*{etype} {method} threshold.json'
+        return self.load(lambda x: json.loads(x.read_text()), glob,
+                         parse_psi_filename)
 
     def load_memr_level(self, memr):
         etype = self._get_memr_etype(memr)
