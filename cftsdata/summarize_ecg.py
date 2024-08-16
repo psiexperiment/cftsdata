@@ -110,7 +110,7 @@ def process_file(filename, manager, plot_seconds=5, bpm_window=15, bpm_step=1):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser('Summarize EFR in folder')
+    parser = argparse.ArgumentParser('Summarize ECG data in folder')
     add_default_options(parser)
     args = vars(parser.parse_args())
     process_files(glob_pattern='**/*abr_io*', fn=process_file,
