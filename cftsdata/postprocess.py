@@ -135,13 +135,22 @@ def zip_unrated_abr_data():
     parser.add_argument('output', type=Path)
     args = parser.parse_args()
 
+    # Expand the exclude argument
+    exclude = []
+    for path in args.exclude:
+        path = Path(path)
+        if '*' in path.name:
+            exclude.extend(path.parent.glob(path.name))
+        else:
+            exclude.append(path)
+
     def _get_id(dataset_path):
         return Path(dataset_path).stem.split(' ')[0]
 
     # Make a list of folders already in an existing zip archive so that we can
     # avoid adding them to the new zip archive.
     exclude_ids = set()
-    for filename in args.exclude:
+    for filename in exclude:
         for name in zipfile.ZipFile(filename).namelist():
             if name.endswith('average waveforms.csv'):
                 exclude_ids.add(_get_id(name))
