@@ -15,6 +15,9 @@ maintainers = [
     {name = "Buran Consulting, LLC", email="info@bradburan.com"},
 ]
 dependencies = [
+    "csaps",
+    "tqdm",
+    "palettable",
     "psidata[zarr-backend]",
 	"psiaudio",
     "jmespath",
