@@ -9,9 +9,6 @@ from psiaudio.util import psd_df
 from psidata.api import Recording
 from . import util
 
-# Max size of LRU cache
-MAXSIZE = 1024
-
 
 # Columns to potentially rename.
 RENAME = {
