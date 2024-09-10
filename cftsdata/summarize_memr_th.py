@@ -94,7 +94,7 @@ def process_keefe_th(filename, manager, freq_lb=5.6e3, freq_ub=16e3,
         color_map = {e: c for c, e in plot.iter_colors(elicitor_levels)}
         figure, axes = plt.subplots(2, 3, constrained_layout=True, figsize=(10.5, 8))
 
-        # Compute the Hoetelling T^2 statistic from the CSD
+        # Compute the Hotelling T^2 statistic from the CSD
         probe_csd = util.csd_df(probe_valid, fs=fh.probe_fs).loc[:, freq_lb:freq_ub]
         t2_2samp = probe_csd.groupby('elicitor_level') \
             .apply(compute_ht2_2samp, train=probe_csd.loc[0])
