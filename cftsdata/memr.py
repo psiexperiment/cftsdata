@@ -4,6 +4,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from psiaudio import stats
+from psiaudio.util import psd_df
 from psidata.api import Recording
 from . import util
 
@@ -213,6 +215,58 @@ class InterleavedMEMRFile(BaseMEMRFile):
 
 
 class SimultaneousMEMRFile(BaseMEMRFile):
+
+    def get_max_epoch_speed(self):
+        # Load the turntable speed and find maximum across entire epoch. For
+        # the default settings in cfts, the stimulus is already
+        return self.get_speed().max(axis=1)
+
+    def get_valid_epoch_mask(self, epochs=None, turntable_speed=None,
+                             min_corr=None, max_ht2=np.inf):
+        '''
+        Parameters
+        ----------
+        max_ht2 : float
+            Implement outlier detection based on Hotelling's T^2 using the
+            specified value as a cutoff. To disable this check, set `max_ht2`
+            to `np.inf`.
+        '''
+        if epochs is None:
+            epochs = self.get_probe()
+
+        # If turntable_speed is not set, load from the settings.
+        if turntable_speed is None:
+            turntable_speed = self.get_setting('max_turntable_speed')
+        speed = self.get_max_epoch_speed().loc[epochs.index]
+        valid = speed < turntable_speed
+        valid.name = 'valid'
+
+        # Get average correlation of epoch with all other epochs.
+        if min_corr is None:
+            min_corr = self.get_setting('min_probe_corr')
+        cc = np.corrcoef(epochs)
+        cc_valid = np.corrcoef(epochs).mean(axis=0) > min_corr
+        valid &= cc_valid
+
+        epochs_psd = psd_df(epochs, fs=self.probe_fs).loc[:, 4e3:32e3]
+        ht2_valid = stats.ht2_individual(epochs_psd) < max_ht2
+        valid &= ht2_valid
+
+        return valid
+
+    def valid_epochs(self, epochs, turntable_speed=None, min_corr=None,
+                     max_ht2=np.inf):
+        '''
+        Parameters
+        ----------
+        max_ht2 : float
+            Implement outlier detection based on Hotelling's T^2 using the
+            specified value as a cutoff. To disable this check, set `max_ht2`
+            to `np.inf`.
+        '''
+        valid = self.get_valid_epoch_mask(epochs, turntable_speed, min_corr,
+                                          max_ht2)
+        return epochs.loc[valid]
 
     @property
     def trial_duration(self):

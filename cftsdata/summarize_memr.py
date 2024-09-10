@@ -424,34 +424,32 @@ sim_expected_suffixes = [
 ]
 
 
-def process_simultaneous_file(filename, manager, turntable_speed=1.25, **kwargs):
+def process_simultaneous_file(filename, manager, turntable_speed=1.25,
+                              min_corr=0.9, max_ht2=160, **kwargs):
     with manager.create_cb() as cb:
         fh = SimultaneousMEMRFile(filename)
 
         settings = get_sim_settings(fh)
 
-        # DUe to the sampling rate of the velocity, we only have one timepoint
-        # for each probe.
-        speed = fh.get_speed().xs(0, level='trial')[0]
-        valid = speed < turntable_speed
+        probe_cal = fh.probe_microphone.get_calibration()
+        elicitor_cal = fh.elicitor_microphone.get_calibration()
+
+        probe = fh.get_probe(trim=(0, 1e-3))
+        valid = fh.get_valid_epoch_mask(turntable_speed=turntable_speed,
+                                        min_corr=min_corr, max_ht2=max_ht2)
+        probe = probe.xs(0, level='trial')
+        valid = valid.xs(0, level='trial')
         valid_count = valid.groupby(['group', 'elicitor_level']) \
             .agg(['size', 'sum', 'mean']).reset_index()
 
-
-        # Load probe, average only valid probe waveforms, and then compute
-        # probe SPL.
-        probe_cal = fh.probe_microphone.get_calibration()
-        elicitor_cal = fh.elicitor_microphone.get_calibration()
-        probe = fh.get_probe(trim=(0, 1e-3)).xs(0, level='trial')
-        probe_spl = probe_cal.get_db(util.psd_df(probe, fs=fh.probe_fs, detrend='constant'))
-
         flb, fub = settings['probe_fl'], settings['probe_fh']
-        probe_csd = util.csd_df(probe.loc[valid], fs=fh.probe_fs).loc[:, flb:fub]
-        probe_csd_mean = probe_csd \
-            .groupby(['group', 'repeat', 'elicitor_level']).mean() \
-            .groupby(['group', 'elicitor_level']).mean()
+        probe_csd = util.csd_df(probe, fs=fh.probe_fs).loc[:, flb:fub]
+        probe_spl = probe_cal.get_db(np.abs(probe_csd))
 
+        probe_csd_mean = probe_csd.loc[valid] \
+            .groupby(['group', 'elicitor_polarity', 'elicitor_level']).mean()
         probe_norm = probe_csd_mean.loc['elicitor'] / probe_csd_mean.loc['baseline']
+        probe_norm = probe_norm.groupby('elicitor_level').mean()
 
         memr_db = util.db(np.abs(probe_norm))
         memr_db = pd.concat([memr_db], keys=['Average'], names=['repeat'])
