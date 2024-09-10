@@ -228,7 +228,7 @@ class Dataset:
         return self.load_raw(cb, etype, **kwargs)
 
     def load(self, cb, glob, filename_parser=None, data_path=None,
-             include_dataset=False, should_load_cb=None):
+             include_dataset=False, should_load_cb=None, info_as_cols=True):
         '''
         Parameters
         ----------
@@ -264,12 +264,18 @@ class Dataset:
                 if not should_load_cb(filename):
                     continue
                 data = cb(filename)
-                for k, v in filename_parser(filename).items():
-                    if k in data:
-                        raise ValueError('Column will get overwritten')
-                    data[k] = v
+                info = filename_parser(filename)
                 if include_dataset:
-                    data['dataset'] = filename.parent
+                    info['dataset'] = filename.parent
+
+                if info_as_cols:
+                    for k, v in info.items():
+                        if k in data:
+                            raise ValueError('Column will get overwritten')
+                        data[k] = v
+                else:
+                    data = pd.concat([data], keys=[tuple(info.values())], names=list(info.keys()))
+
                 result.append(data)
             except Exception as e:
                 raise ValueError(f'Error processing {filename}') from e
