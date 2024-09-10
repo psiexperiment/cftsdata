@@ -406,10 +406,11 @@ class Dataset:
                 result.append(new_row)
         return pd.DataFrame(result)
 
-    def load_abr_eeg_spectrum(self, **kwargs):
+    def load_abr_eeg_spectrum(self, max_freq=5e3, **kwargs):
         return self.load(lambda x: pd.read_csv(x),
                           '**/*ABR eeg spectrum.csv',
-                          parse_psi_filename, **kwargs)
+                          parse_psi_filename, **kwargs) \
+            .query('frequency <= @max_freq')
 
     def load_abr_eeg_rms(self, **kwargs):
         def _load_abr_eeg_rms(x):
