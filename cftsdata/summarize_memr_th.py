@@ -211,7 +211,7 @@ def process_keefe_th(filename, manager, freq_lb=5.6e3, freq_ub=16e3,
         # Compute the MEMR for plotting
         probe_norm = (probe_csd / probe_csd.loc[0]).groupby('elicitor_level').mean()
 
-        _process_th(manager, probe_norm, t2_2samp)
+        _process_th(manager, probe_norm, t2_2samp, kwargs)
 
 
 def compute_ht2_2samp_valero(x, train=None):
