@@ -30,6 +30,7 @@ power = lambda x, a, b, c: a * x ** b + c
 def get_fit_text(a, b, c, d):
     return fr'${a:.2f} + \frac{{{b:.2f}}}{{1 + e^{{e^{{{d:.2f}}} \cdot ({c:.2f} - x)}}}}$'
 
+
 def sigmoid_norm(p, x, y, loss):
     y_pred = sigmoid(x, *p)
     z = (y - y_pred) ** 2
@@ -58,8 +59,6 @@ def fit_sigmoid(x, y, th_criterion, asymptote_criterion=None, loss='soft_l1'):
     fit.index.name = 'elicitor_level'
 
     th = np.interp(th_criterion, fit.values, fit.index)
-    if not result.success:
-        raise ValueError('Optimization failed')
     result = {
         'p': result.x,
         'fit': fit,
@@ -121,28 +120,23 @@ def _process_th(manager, probe_norm, t2_2samp, proc_info):
     axes[1, 0].plot(average_memr, 'ko')
     axes[1, 0].set_title('Average MEMR amplitude')
     axes[1, 0].set_ylabel('MEMR amplitude (dB SPL)')
-    try:
-        average_memr_fit = fit_sigmoid(average_memr.index, average_memr, 0.25, 80)
-        axes[1, 0].text(0.05, 0.95, average_memr_fit['formula'],
-                        transform=axes[1, 0].transAxes, ha='left', va='top')
-        axes[1, 0].plot(average_memr_fit['fit'], 'r-')
-        axes[1, 0].axvline(average_memr_fit['threshold'], color='r', ls=':')
-        axes[1, 0].axhline(average_memr_fit['asymptote'], color='r', ls=':')
-    except ValueError:
-        average_memr_fit = {'threshold': np.nan}
+
+    average_memr_fit = fit_sigmoid(average_memr.index, average_memr, 0.25, 80)
+    axes[1, 0].text(0.05, 0.95, average_memr_fit['formula'],
+                    transform=axes[1, 0].transAxes, ha='left', va='top')
+    axes[1, 0].plot(average_memr_fit['fit'], 'r-')
+    axes[1, 0].axvline(average_memr_fit['threshold'], color='r', ls=':')
+    axes[1, 0].axhline(average_memr_fit['asymptote'], color='r', ls=':')
 
     axes[1, 1].plot(max_memr, 'ko')
     axes[1, 1].set_title('Max MEMR amplitude')
     axes[1, 1].set_ylabel('MEMR amplitude (dB SPL)')
-    try:
-        max_memr_fit = fit_sigmoid(max_memr.index, max_memr, 0.5, 80)
-        axes[1, 1].text(0.05, 0.95, max_memr_fit['formula'],
-                        transform=axes[1, 1].transAxes, ha='left', va='top')
-        axes[1, 1].plot(max_memr_fit['fit'], 'r-')
-        axes[1, 1].axvline(max_memr_fit['threshold'], color='r', ls=':')
-        axes[1, 1].axhline(max_memr_fit['asymptote'], color='r', ls=':')
-    except ValueError:
-        max_memr_fit = {'threshold': np.nan}
+    max_memr_fit = fit_sigmoid(max_memr.index, max_memr, 0.5, 80)
+    axes[1, 1].text(0.05, 0.95, max_memr_fit['formula'],
+                    transform=axes[1, 1].transAxes, ha='left', va='top')
+    axes[1, 1].plot(max_memr_fit['fit'], 'r-')
+    axes[1, 1].axvline(max_memr_fit['threshold'], color='r', ls=':')
+    axes[1, 1].axhline(max_memr_fit['asymptote'], color='r', ls=':')
 
     memr_amplitude = pd.DataFrame({
         'max': max_memr,
@@ -150,25 +144,22 @@ def _process_th(manager, probe_norm, t2_2samp, proc_info):
     })
 
     fitted_memr_amplitude = pd.DataFrame({
-        'max': max_memr_fit['fit'],
-        'mean': average_memr_fit['fit'],
+        'max': max_memr_fit.get('fit', None),
+        'mean': average_memr_fit.get('fit', None),
     })
 
     # Calculate the equivalent F-value for the criterion p-value
     axes[1, 2].plot(t2_2samp['F'], 'ko')
     axes[1, 2].set_title('2-sample $F$ statistic')
     axes[1, 2].set_ylabel('$F$ statistic')
-    try:
-        df = t2_2samp['df'].iloc[0]
-        t2_2samp_p_crit = chi2.isf(0.5, df=df)
-        t2_2samp_fit = fit_sigmoid(t2_2samp.index, t2_2samp['F'], t2_2samp_p_crit)
-        axes[1, 2].text(0.05, 0.95, t2_2samp_fit['formula'],
-                        transform=axes[1, 2].transAxes, ha='left', va='top')
-        axes[1, 2].plot(t2_2samp_fit['fit'], 'r-')
-        axes[1, 2].axvline(t2_2samp_fit['threshold'], color='r', ls=':')
-        axes[1, 2].axhline(t2_2samp_p_crit, color='r', ls=':')
-    except ValueError:
-        t2_2samp_fit = {'threshold': np.nan}
+    df = t2_2samp['df'].iloc[0]
+    t2_2samp_p_crit = chi2.isf(0.5, df=df)
+    t2_2samp_fit = fit_sigmoid(t2_2samp.index, t2_2samp['F'], t2_2samp_p_crit)
+    axes[1, 2].text(0.05, 0.95, t2_2samp_fit['formula'],
+                    transform=axes[1, 2].transAxes, ha='left', va='top')
+    axes[1, 2].plot(t2_2samp_fit['fit'], 'r-')
+    axes[1, 2].axvline(t2_2samp_fit['threshold'], color='r', ls=':')
+    axes[1, 2].axhline(t2_2samp_p_crit, color='r', ls=':')
 
     for ax in axes[-1]:
         ax.set_xlabel('Elicitor Level (dB SPL)')
