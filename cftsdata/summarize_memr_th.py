@@ -238,7 +238,7 @@ def process_valero_th(filename, manager, freq_lb=5.6e3, freq_ub=16e3,
         fh = memr.SimultaneousMEMRFile(filename)
 
         # Load only the valid probes
-        probe_valid = fh.valid_epochs(fh.get_probe(),
+        probe_valid = fh.valid_epochs(fh.get_probe(trim=(0, 1e-3)),
                                       turntable_speed=turntable_speed,
                                       min_corr=min_corr,
                                       max_ht2=max_ht2)
