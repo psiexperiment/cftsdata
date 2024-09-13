@@ -246,10 +246,15 @@ def process_valero_th(filename, manager, freq_lb=5.6e3, freq_ub=16e3,
         fh = memr.SimultaneousMEMRFile(filename)
 
         # Load only the valid probes
-        probe_valid = fh.valid_epochs(fh.get_probe(trim=(0, 1e-3)),
+        probe = fh.get_probe(trim=(0, 1e-3))
+        probe_valid = fh.valid_epochs(probe,
                                       turntable_speed=turntable_speed,
                                       min_corr=min_corr,
                                       max_ht2=max_ht2)
+        probe_valid = probe_valid.xs(0, level='trial')
+
+        n_valid = probe_valid.groupby(['elicitor_level', 'group']) \
+            .size().unstack('group')[['baseline', 'elicitor']]
 
         # Compute the Hotelling T^2 statistic from the CSD
         probe_csd = util.csd_df(probe_valid, fs=fh.probe_fs).loc[:, freq_lb:freq_ub]

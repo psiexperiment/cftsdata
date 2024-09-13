@@ -253,7 +253,9 @@ class SimultaneousMEMRFile(BaseMEMRFile):
         valid &= cc_valid
 
         epochs_psd = psd_df(epochs, fs=self.probe_fs).loc[:, 4e3:32e3]
-        ht2_valid = stats.ht2_individual(epochs_psd) < max_ht2
+        ht2 = epochs_psd.groupby('elicitor_level', group_keys=False) \
+            .apply(lambda x: pd.Series(stats.ht2_individual(x), index=x.index))
+        ht2_valid = ht2 < max_ht2
         valid &= ht2_valid
 
         return valid
