@@ -482,12 +482,13 @@ class Dataset:
         return self.load(partial(load_memr, repeat=repeat),
                          glob, parse_psi_filename, **kwargs)
 
-    def load_memr_amplitude(self, memr, repeat=None, span=None, total=False, **kwargs):
+    def load_memr_amplitude(self, memr, method='HT2', amplitude_type='raw'):
+        '''
+        Load the MEMR amplitude as calcuated by the given method
+        '''
         etype = self._get_memr_etype(memr)
-        glob = f'**/*{etype} MEMR_amplitude_total.csv' if total \
-            else f'**/*{etype} MEMR_amplitude.csv'
-        return self.load(partial(load_memr_amplitude, repeat=repeat, span=span),
-                         glob, parse_psi_filename, **kwargs)
+        glob = f'**/*{etype} {method} {amplitude_type} amplitude.csv'
+        return self.load(lambda x: pd.read_csv(x), glob, parse_psi_filename)
 
     def load_memr_metrics(self, memr, method='HT2'):
         etype = self._get_memr_etype(memr)
