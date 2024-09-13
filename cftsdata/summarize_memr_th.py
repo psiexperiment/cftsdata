@@ -217,7 +217,10 @@ def process_keefe_th(filename, manager, freq_lb=5.6e3, freq_ub=16e3,
 def compute_ht2_2samp_valero(x, train=None):
     x = np.abs(x)
     if train is None:
-        train = x.xs('baseline', level='group')
+        try:
+            train = x.xs('baseline', level='group')
+        except KeyError:
+            return pd.Series({'T2': np.nan, 'F': np.nan, 'p': np.nan, 'df': np.nan})
     else:
         train = np.abs(train)
     test = x.xs('elicitor', level='group')
