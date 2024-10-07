@@ -339,8 +339,8 @@ def is_abr_experiment(base_path, allow_superset=False):
         return False
 
 
-P_TH = re.compile('Threshold \(dB SPL\): ([\w.-]+)')
-P_FREQ = re.compile('Frequency \(kHz\): ([\d.]+)')
+P_TH = re.compile(r'Threshold \(dB SPL\): ([\w.-]+)')
+P_FREQ = re.compile(r'Frequency \(kHz\): ([\d.]+)')
 P_FILENAME = re.compile(r'.*-(\d+\.\d+)+kHz-(?:(\w+)-)?analyzed.txt')
 
 def load_abr_analysis(filename, freq_from_filename=True):
