@@ -157,6 +157,7 @@ def process_file_dpoae(filename, manager):
         ax.set_xlabel('$f_2$ frequency (kHz)')
         ax.set_ylabel('IsoDP threshold (dB SPL)')
         ax.legend(bbox_to_anchor=(1, 1), loc='upper left')
+        ax.axis(xmin=5.6e3*0.8, xmax=45.3e3/0.8, ymin=0, ymax=80)
 
         manager.save_dataframe(measured, 'io.csv')
         manager.save_dataframe(th, 'th.csv')
@@ -235,8 +236,9 @@ def process_file_dpgram(filename, manager):
             ax.plot(row, 'o-', label=str(c))
         ax.set_xscale('octave', octaves=0.5)
         ax.set_xlabel('$f_2$ frequency (kHz)')
-        ax.set_ylabel('IsoDP threshold (dB SPL)')
+        ax.set_ylabel('IsoDP threshold (dB )')
         ax.legend()
+        ax.axis(xmin=5.6e3*0.8, xmax=45.3e3/0.8, ymin=0, ymax=80)
 
         manager.save_dataframe(measured, 'dpgram.csv')
         manager.save_fig(dpgram_figure, 'dpgram.pdf')
