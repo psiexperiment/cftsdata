@@ -7,6 +7,7 @@ from pathlib import Path
 import zipfile
 
 import jmespath
+import numpy as np
 import pandas as pd
 import yaml
 
@@ -102,7 +103,7 @@ def load_memr_amplitude(filename, repeat=None, span=None):
     return df.reset_index()
 
 
-def coerce_frequency(columns, octave_step, si_prefix=''):
+def coerce_frequency(columns, octave_step, si_prefix='', standardize=True):
     '''
     Decorator for methods in subclasses of `Dataset` that coerce frequencies in
     the DataFrame to the nearest octave.
@@ -117,6 +118,9 @@ def coerce_frequency(columns, octave_step, si_prefix=''):
         Ensure that coercion is based on expected scale given SI unit. If list,
         must be one of the valid choices listed above. See
         `psiaudio.util.nearest_octave` for more information.
+    standardize : bool
+        If True, convert all units to integer units of Hz. This helps with
+        joining dataframes.
     '''
     if isinstance(columns, str):
         columns = [columns]
@@ -130,7 +134,16 @@ def coerce_frequency(columns, octave_step, si_prefix=''):
             result = fn(*args, **kwargs)
             for c, si in zip(columns, si_prefix):
                 try:
-                    result[c] = util.nearest_octave(result[c], octave_step, si)
+                    r = util.nearest_octave(result[c], octave_step, si)
+                    if standardize:
+                        if si == '':
+                            pass
+                        elif si == 'k':
+                            r = r * 1e3
+                        else:
+                            raise ValueError(f'Unrecognized SI unit: {si}')
+                        r = np.round(r).astype('int')
+                    result[c] = r
                 except KeyError as e:
                     cols = ', '.join(result.columns)
                     raise KeyError(f'No column named "{c}". Valid columns are {cols}.') from e
