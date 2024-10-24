@@ -338,9 +338,10 @@ class Dataset:
                           '**/*dpgram.csv',
                           parse_psi_filename, **kwargs)
 
-    def load_abr_io(self, level=None, **kwargs):
+    def load_abr_io(self, level=None, subthreshold_handling='discard', **kwargs):
         def _load_abr_io(x):
-            freq, th, rater, peaks = load_abr_analysis(x)
+            freq, th, rater, peaks = \
+                load_abr_analysis(x, subthreshold_handling=subthreshold_handling)
             peaks = peaks.reset_index()
             peaks['frequency'] = freq
             peaks['rater'] = rater

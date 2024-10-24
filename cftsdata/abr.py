@@ -343,7 +343,9 @@ P_TH = re.compile(r'Threshold \(dB SPL\): ([\w.-]+)')
 P_FREQ = re.compile(r'Frequency \(kHz\): ([\d.]+)')
 P_FILENAME = re.compile(r'.*-(\d+\.\d+)+kHz-(?:(\w+)-)?analyzed.txt')
 
-def load_abr_analysis(filename, freq_from_filename=True):
+def load_abr_analysis(filename,
+                      freq_from_filename=True,
+                      subthreshold_handling='discard'):
     '''
     Load ABR analysis from file
 
@@ -411,15 +413,31 @@ def load_abr_analysis(filename, freq_from_filename=True):
         data = pd.io.parsers.read_csv(fh, sep='\t')
         data.rename(columns=rename, inplace=True)
 
-    # Discard all sub-threshold data
-    m = data['level'] >= th
-    data = data.loc[m]
-
     keep_cols = list(rename.values())
     keep = [c for c in data.columns if c in keep_cols]
-    data = data[keep] \
-        .set_index('level', verify_integrity=True) \
-        .sort_index()
+    data = data[keep]
+
+
+    # Discard all sub-threshold data
+    if subthreshold_handling == 'discard':
+        m = data['level'] >= th
+        data = data.loc[m]
+    elif subthreshold_handling == 'zero':
+        m = data['level'] < th
+        update_cols = keep[:]
+        update_cols.remove('baseline')
+        update_cols.remove('baseline_std')
+        update_cols.remove('level')
+        data.loc[m, update_cols] = 0
+    elif subthreshold_handling == 'nan':
+        m = data['level'] < th
+        update_cols = keep[:]
+        update_cols.remove('baseline')
+        update_cols.remove('baseline_std')
+        update_cols.remove('level')
+        data.loc[m, update_cols] = np.nan
+
+    data = data.set_index('level', verify_integrity=True).sort_index()
 
     try:
         filename_freq, rater = P_FILENAME.match(filename.name).groups()
