@@ -23,12 +23,15 @@ def archive_data(path):
     file in the archive, and then generates an MD5sum sidecar containing the
     MD5sum of the zip file itself.
     '''
+    # Need to handle cases where path has a dot in it.
+    zippath = Path(str(path) + '.zip')
+    md5path = Path(str(path) + '.md5')
     path = Path(path)
     shutil.make_archive(str(path), 'zip', str(path))
+
     try:
-        zippath = validate(path)
+        validate(zippath)
         zipmd5 = md5sum(zippath.open('rb'))
-        md5path = zippath.with_suffix('.md5')
         md5path.write_text(zipmd5)
         shutil.rmtree(path)
     except IOError as e:
@@ -104,8 +107,7 @@ def validate(path):
     inside the archive is compared with the companion file in the unzipped
     folder.
     '''
-    zippath = Path(path).with_suffix('.zip')
-    archive = zipfile.ZipFile(zippath)
+    archive = zipfile.ZipFile(path)
     for name in archive.namelist():
         archive_md5 = md5sum(archive.open(name))
         file = path / name
@@ -114,7 +116,6 @@ def validate(path):
                 file_md5 = md5sum(fh)
             if archive_md5 != file_md5:
                 raise IOError('{name} in zipfile for {path} is corrupted')
-    return zippath
 
 
 def zip_unrated_abr_data():
