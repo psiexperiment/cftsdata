@@ -69,6 +69,18 @@ class ABRFile(Recording):
             raise ValueError('ERP metadata missing')
 
     @property
+    def stimulus_type(self):
+        '''
+        Stimulus type used for ABR
+
+        Returns
+        -------
+        stimulus_type
+            'click' or 'tone' depending on stimulus used.
+        '''
+        return 'click' if 'abr_io_click' in self.base_path.stem else 'tone'
+
+    @property
     @lru_cache(maxsize=MAXSIZE)
     def eeg(self):
         '''
@@ -99,7 +111,11 @@ class ABRFile(Recording):
         `target_tone_frequency` will become `frequency`).
         '''
         data = self.__getattr__('erp_metadata')
-        return data.rename(columns=lambda x: x.replace('target_tone_', ''))
+        if self.stimulus_type == 'click':
+            data = data.drop(columns=['duration'])
+        return data \
+            .rename(columns=lambda x: x.replace('target_tone_', '')) \
+            .rename(columns=lambda x: x.replace('target_click_', ''))
 
     def get_epochs(self, offset=0, duration=8.5e-3, detrend='constant',
                    downsample=None, reject_threshold='saved',
@@ -113,11 +129,21 @@ class ABRFile(Recording):
         {common_docstring}
         {epochs_docstring}
         '''
+        add_frequency = False
+        if self.stimulus_type != 'tone':
+            if 'frequency' in columns:
+                columns = columns[:]
+                columns.remove('frequency')
+                add_frequency = True
+
         fn = getattr(self, signal).get_epochs
         result = fn(self.erp_metadata, offset, duration, detrend,
                     downsample=downsample, columns=columns, cb=cb)
         result = self._apply_reject(result, reject_threshold, reject_mode)
         result = self._apply_n(result, averages)
+        if add_frequency:
+            result = pd.concat([result], [self.stimulus_type], names=['frequency'])
+
         return result
 
     def get_random_segments(self, n, offset=0, duration=8.5e-3,
@@ -152,6 +178,13 @@ class ABRFile(Recording):
         {common_docstring}
         {epochs_docstring}
         '''
+        add_frequency = False
+        if self.stimulus_type != 'tone':
+            if 'frequency' in columns:
+                columns = columns[:]
+                columns.remove('frequency')
+                add_frequency = True
+
         fn = self.eeg.get_epochs_filtered
         result = fn(md=self.erp_metadata, offset=offset, duration=duration,
                     filter_lb=filter_lb, filter_ub=filter_ub,
@@ -160,6 +193,9 @@ class ABRFile(Recording):
                     columns=columns, cb=cb)
         result = self._apply_reject(result, reject_threshold, reject_mode)
         result = self._apply_n(result, averages)
+        if add_frequency:
+            result = pd.concat([result], keys=[self.stimulus_type], names=['frequency'])
+
         return result
 
     def get_random_segments_filtered(self, n, filter_lb=300, filter_ub=3000,

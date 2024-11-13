@@ -211,7 +211,7 @@ class BaseDatasetManager:
             suffixes = [suffixes]
         for suffix in suffixes:
             if not self.get_proc_filename(suffix).exists():
-                log.info(f'Needs reprocessing since {suffix} is missing')
+                #log.info(f'Needs reprocessing since {suffix} is missing')
                 return False
         return True
 

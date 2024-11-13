@@ -115,8 +115,11 @@ def plot_waveforms_cb(epochs_mean, filename, name):
     figure, axes = plt.subplots(1, n_panels, figsize=(6*n_panels, 8.5), squeeze=False)
     for ax, (frequency, data) in zip(axes[0], grouped):
         waterfall_plot(ax, data)
+        if isinstance(frequency, str):
+            ax.set_title(frequency.capitalize())
+        else:
+            ax.set_title(f'{frequency * 1e-3:0.2f} Hz')
         ax.set_xlabel('Time (msec)')
-        ax.set_title(f'{frequency * 1e-3:0.2f} Hz')
     figure.suptitle(name)
     figure.savefig(filename)
 
@@ -193,7 +196,7 @@ def process_file(filename, manager, offset=-1e-3, duration=10e-3,
     # Numpy ones. Newer versions of Pandas have fixed this issue, though.
     md = fh.erp_metadata.iloc[:1].to_dict('records')[0]
     for column in COLUMNS:
-        del md[column]
+        md.pop(column, None)
     del md['t0']
 
     downsample = int(ceil(fh.eeg.fs / target_fs))
