@@ -1,6 +1,7 @@
 import datetime as dt
 from functools import partial
 import json
+import numbers
 import re
 import os
 from pathlib import Path
@@ -13,7 +14,7 @@ import yaml
 
 from psiaudio import util
 
-from cftsdata.abr import load_abr_analysis
+from cftsdata.abr import ABRStim, load_abr_analysis
 from cftsdata.summarize_abr import load_abr_waveforms
 
 
@@ -134,7 +135,8 @@ def coerce_frequency(columns, octave_step, si_prefix='', standardize=True):
             result = fn(*args, **kwargs)
             for c, si in zip(columns, si_prefix):
                 try:
-                    r = util.nearest_octave(result[c], octave_step, si)
+                    m = [isinstance(v, numbers.Number) for v in result[c]]
+                    r = util.nearest_octave(result.loc[m, c].astype('float'), octave_step, si)
                     if standardize:
                         if si == '':
                             pass
@@ -143,7 +145,7 @@ def coerce_frequency(columns, octave_step, si_prefix='', standardize=True):
                         else:
                             raise ValueError(f'Unrecognized SI unit: {si}')
                         r = np.round(r).astype('int')
-                    result[c] = r
+                    result.loc[m, c] = r
                 except KeyError as e:
                     cols = ', '.join(result.columns)
                     raise KeyError(f'No column named "{c}". Valid columns are {cols}.') from e
@@ -405,8 +407,14 @@ class Dataset:
             Dataframe with one row per frequency.
         '''
         def _load_abr_frequencies(x):
+            def _convert_freq(x):
+                x = x.strip()
+                if x == 'click':
+                    return float(ABRStim.CLICK.value)
+                return float(x)
+
             with x.open() as fh:
-                frequencies = set(float(v) for v in fh.readline().split(',')[1:])
+                frequencies = set(_convert_freq(v) for v in fh.readline().split(',')[1:])
                 return pd.Series({'frequencies': sorted(frequencies)})
         ds = self.load(_load_abr_frequencies,
                         '**/*ABR average waveforms.csv',

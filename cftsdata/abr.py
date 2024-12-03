@@ -16,6 +16,7 @@ Example
 import logging
 log = logging.getLogger(__name__)
 
+from enum import Enum
 from functools import lru_cache, partialmethod, wraps
 import json
 import os.path
@@ -45,6 +46,20 @@ MERGE_PATTERN = \
     r'\g<ear> ' \
     r'\g<note> ' \
     r'\g<experiment>*'
+
+
+def freq_to_label(freq):
+    if freq == 'click':
+        return 'Click'
+    return f'{freq:.0f} Hz'
+
+
+class ABRStim(Enum):
+    '''
+    ABR frequencies are typically reported as floats. To enable consistency
+    with other types of ABRs, we map the stimulus type to an enum value.
+    '''
+    CLICK = -1
 
 
 class ABRFile(Recording):
@@ -377,7 +392,7 @@ def is_abr_experiment(base_path, allow_superset=False):
 
 P_TH = re.compile(r'Threshold \(dB SPL\): ([\w.-]+)')
 P_FREQ = re.compile(r'Frequency \(kHz\): ([\d.]+)')
-P_FILENAME = re.compile(r'.*-(\d+\.\d+)+kHz-(?:(\w+)-)?analyzed.txt')
+P_FILENAME = re.compile(r'.*-(\d+\.\d+|click)(?:kHz)?-(?:(\w+)-)?analyzed.txt')
 
 def load_abr_analysis(filename,
                       freq_from_filename=True,
@@ -478,7 +493,10 @@ def load_abr_analysis(filename,
     try:
         filename_freq, rater = P_FILENAME.match(filename.name).groups()
         if freq_from_filename:
-            freq = float(filename_freq) * 1e3
+            if filename_freq == 'click':
+                freq = 'click'
+            else:
+                freq = float(filename_freq) * 1e3
     except AttributeError:
         raise ValueError(f'Could not parser rater and frequency from {filename.name}')
 
