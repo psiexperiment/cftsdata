@@ -11,6 +11,7 @@ from tqdm.auto import tqdm
 
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as plt
+import numpy as np
 
 from psiaudio.util import get_cb
 
@@ -170,6 +171,25 @@ def cal_from_epl(name, base_path=None):
                                       phase=cal['phase'])
 
 
+class CftsDataJsonEncoder(json.JSONEncoder):
+
+    def default(self, obj):
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        elif isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, Path):
+            return str(obj)
+        elif callable(obj):
+            return f'{obj.__module__}.{obj.__name__}'
+        else:
+            return super().default(obj)
+
+
 class BaseDatasetManager:
 
     def __init__(self, path, cb='tqdm', file_template=None):
@@ -217,7 +237,7 @@ class BaseDatasetManager:
 
     def save_dict(self, d, suffix):
         filename = self.get_proc_filename(suffix)
-        filename.write_text(json.dumps(d, indent=4))
+        filename.write_text(json.dumps(d, indent=4, cls=CftsDataJsonEncoder))
 
     def save_fig(self, figure, suffix, add_filename=True):
         filename = self.get_proc_filename(suffix)

@@ -37,6 +37,7 @@ cfts-invert-eeg-data = "cftsdata.postprocess:invert_eeg_data"
 cfts-merge-pdf = "cftsdata.postprocess:merge_pdf"
 
 summarize-abr = "cftsdata.summarize_abr:main"
+summarize-abrpresto = "cftsdata.abrpresto:main"
 summarize-iec = "cftsdata.summarize_iec:main"
 summarize-dpoae = "cftsdata.summarize_dpoae:main_dpoae"
 summarize-dpgram = "cftsdata.summarize_dpoae:main_dpgram"
