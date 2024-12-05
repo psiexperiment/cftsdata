@@ -1,3 +1,5 @@
+import datetime as dt
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -23,27 +25,40 @@ expected_suffixes = [
     'EFR amplitude linear.csv',
     'EFR harmonics linear.csv',
     'EFR PSD linear.csv',
+
+    'EFR processing settings.json',
 ]
 
 
 def process_file(filename, manager, segment_duration=0.5, n_draw=128,
-                 n_bootstrap=100, efr_harmonics=5, target_fs=12500):
+                 n_bootstrap=100, efr_harmonics=None, target_fs=12500):
     '''
     Parameters
     ----------
     segment_duration : float
         Duration of segments to segment data into. This applies to both
         continuous (Shaheen) and epoched (Verhulst, Bramhall) approaches.
-    efr_harmoincs : int
+    efr_harmonics : int
         Number of harmonics (including fundamental) to include when calculating
-        EFR power.
+        EFR power. If None, calculate up to the maximum available.
     target_fs : float
         Target sampling rate to decimate EEG data to. Downsampling greatly
         speeds up the bootstrap analyses. Be sure the target sampling rate is
         at least twice the maximum harmonic you want to analyze in the EFR data.
     '''
+    # Force a copy since the pandas query later does something very, very odd
+    # to the dictionary returned. Probably a bug? It seems that the pandas
+    # query causes the dictionary returned by `locals` to be modified in-place
+    # with new variables.
+    settings = dict(locals())
+    settings.pop('manager')
+    settings['filename'] = str(settings['filename'])
+    settings['creation_time'] = dt.datetime.now().isoformat()
+    settings['n_harmonics'] = {}
+
     with manager.create_cb() as cb:
         fh = EFR(filename)
+
         n_segments = fh.get_setting('duration') / segment_duration
         if n_segments != int(n_segments):
             raise ValueError(f'Cannot analyze {filename} using default settings')
@@ -72,6 +87,8 @@ def process_file(filename, manager, segment_duration=0.5, n_draw=128,
         v_harmonics_all = []
         v_psd_all = []
 
+        # Generate list of harmonics (i.e., sidebands) to sum up to calculate
+        # overall level of stimulus.
         if fh.efr_type == 'ram':
             level_harmonics = np.arange(-10, 11)
         else:
@@ -80,6 +97,15 @@ def process_file(filename, manager, segment_duration=0.5, n_draw=128,
         spectrum_figures = []
         n = len(eeg_grouped)
         for i, ((fm, fc), eeg_df) in enumerate(eeg_grouped):
+            if efr_harmonics is None:
+                # Add a fudge factor of 1.2 so that we don't try to extract
+                # harmonics too close to the corner frequency of the filter.
+                max_harmonic = actual_fs / 2 / 1.2
+                n_harmonics = int(max_harmonic // fm)
+            else:
+                n_harmonics = efr_harmonics
+            settings['n_harmonics'].setdefault(float(fm), {})[float(fc)] = n_harmonics
+
             figure, axes = plt.subplots(3, 2, sharex=False, figsize=(12, 18),
                                         layout='constrained')
 
@@ -116,12 +142,11 @@ def process_file(filename, manager, segment_duration=0.5, n_draw=128,
                                              callback=None)
             eeg_bs_all.append(eeg_bs)
             keys.append((fm, fc))
-
             axes[1, 0].plot(eeg_bs['psd_norm'], color='k')
             axes[1, 1].plot(eeg_bs['plv'], color='k')
 
             for ax in axes.flat:
-                for i in range(1, 6):
+                for i in range(1, n_harmonics + 1):
                     ax.axvline(60 * i, color='lightgray', ls=':', zorder=-1, label='60 Hz and harmonics')
                     ax.axvline(fm * i, color='lightblue', ls='-', zorder=-1, label='$F_m$ and harmonics')
                 ax.axvline(fc, color='pink', zorder=-1, label='$F_c$')
@@ -144,7 +169,7 @@ def process_file(filename, manager, segment_duration=0.5, n_draw=128,
             # Plot the second 10 cycles of the filtered waveform (first 10
             # cycles may have onset artifact).
             f_lb = fm / 1.2
-            f_ub = fm * efr_harmonics * 1.2
+            f_ub = fm * n_harmonics * 1.2
             b, a = signal.iirfilter(2, (f_lb, f_ub), btype='band',
                                     ftype='butter', fs=actual_fs)
 
@@ -164,7 +189,7 @@ def process_file(filename, manager, segment_duration=0.5, n_draw=128,
                                                               n_draw=n_draw,
                                                               n_bootstrap=n_bootstrap,
                                                               fm=fm,
-                                                              n_harmonics=efr_harmonics)
+                                                              n_harmonics=n_harmonics)
             v_amplitude_all.append(v_amplitude)
             v_harmonics_all.append(v_harmonics)
             v_psd_all.append(v_psd)
@@ -207,12 +232,13 @@ def process_file(filename, manager, segment_duration=0.5, n_draw=128,
         harmonic_power = []
         for (fm, fc), df in eeg_bs_all.groupby(['fm', 'fc']):
             # Harmonics includes the fundamental (i.e., fm)
-            harmonics = np.arange(1, efr_harmonics + 1) * fm
+            n_harmonics = settings['n_harmonics'][fm][fc]
+            harmonics = np.arange(1, n_harmonics + 1) * fm
             ix = pd.IndexSlice[:, :, harmonics]
             p = df.loc[ix].copy()
 
             # fm should be 0 in this array
-            p.loc[:, 'harmonic'] = np.arange(efr_harmonics)
+            p.loc[:, 'harmonic'] = np.arange(n_harmonics)
             p = p.set_index('harmonic', append=True)
             harmonic_power.append(p)
 
@@ -222,14 +248,15 @@ def process_file(filename, manager, segment_duration=0.5, n_draw=128,
         efr['amplitude'] = v_amplitude_all.groupby(['fc', 'fm']).mean()
         efr['amplitude_db'] = util.db(efr['amplitude'])
 
-        efr_figure, axes = plt.subplots(1, 3, figsize=(12, 4), sharex=True)
+        efr_figure, axes = plt.subplots(1, 3, figsize=(12, 4), sharex=True,
+                                        layout='constrained')
         for fm, efr_df in efr.reset_index().groupby('fm'):
             p, = axes[0].plot(efr_df['fc'], efr_df['amplitude_db'], 'o-', label=f'{fm} Hz')
             c = p.get_color()
             axes[1].plot(efr_df['fc'], efr_df['psd_norm'], 'o:',
                          label=f'{fm} Hz ($f_0$)', color=c)
             axes[1].plot(efr_df['fc'], efr_df['psd_norm_harmonics'], 'o-', color=c,
-                         label=f'{fm} Hz ($f_{{0-{efr_harmonics-1}}})$')
+                         label=f'{fm} Hz ($f_{{0-{n_harmonics-1}}})$')
             axes[2].plot(efr_df['fc'], efr_df['plv'], 'o-', color=c, label=f'{fm} Hz')
 
         axes[1].legend()
@@ -241,7 +268,6 @@ def process_file(filename, manager, segment_duration=0.5, n_draw=128,
         axes[1].set_ylabel('EFR (dB re noise floor)')
         axes[2].set_ylabel('Phase-locking value (frac.)')
         axes[2].axis(ymin=0, ymax=1.1)
-        efr_figure.tight_layout()
 
         manager.save_df(harmonic_power, 'EFR harmonics.csv', index=False)
         manager.save_df(eeg_bs_all, 'EEG bootstrapped.csv')
@@ -252,6 +278,7 @@ def process_file(filename, manager, segment_duration=0.5, n_draw=128,
         manager.save_df(v_psd_all, 'EFR PSD linear.csv')
         manager.save_fig(efr_figure, 'EFR.pdf')
         manager.save_figs(spectrum_figures, 'spectrum.pdf')
+        manager.save_dict(settings, 'EFR processing settings.json')
 
     return True
 
