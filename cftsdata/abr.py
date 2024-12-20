@@ -48,10 +48,15 @@ MERGE_PATTERN = \
     r'\g<experiment>*'
 
 
-def freq_to_label(freq):
-    if freq == 'click':
+def freq_to_label(freq, si_unit=''):
+    if freq == 'click' or freq == -1:
         return 'Click'
-    return f'{freq:.0f} Hz'
+    if si_unit == 'k':
+        return f'{freq*1e-3:.1f} kHz'
+    elif si_unit == '':
+        return f'{freq:.0f} Hz'
+    else:
+        raise ValueError(f'Unsupported SI unit: "{si_unit}"')
 
 
 class ABRStim(Enum):
@@ -468,7 +473,6 @@ def load_abr_analysis(filename,
     keep = [c for c in data.columns if c in keep_cols]
     data = data[keep]
 
-
     # Discard all sub-threshold data
     if subthreshold_handling == 'discard':
         m = data['level'] >= th
@@ -499,6 +503,10 @@ def load_abr_analysis(filename,
                 freq = float(filename_freq) * 1e3
     except AttributeError:
         raise ValueError(f'Could not parser rater and frequency from {filename.name}')
+
+    # Code click as Enum value
+    if freq == 'click':
+        freq = ABRStim.CLICK.value
 
     return freq, th, rater, data
 

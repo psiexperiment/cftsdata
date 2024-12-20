@@ -1,5 +1,5 @@
 import datetime as dt
-from functools import partial
+from functools import partial, wraps
 import json
 import numbers
 import re
@@ -131,11 +131,15 @@ def coerce_frequency(columns, octave_step, si_prefix='', standardize=True):
         raise ValueError('Length of si_prefix should match length of columns')
 
     def inner(fn):
+        @wraps(fn)
         def wrapper(*args, **kwargs):
             result = fn(*args, **kwargs)
             for c, si in zip(columns, si_prefix):
                 try:
-                    m = [isinstance(v, numbers.Number) for v in result[c]]
+                    # Make sure values are numeric and greater than 0. Less
+                    # than 0 is used as a flag for some special stimuli (e.g.,
+                    # clicks).
+                    m = [(isinstance(v, numbers.Number) and (v > 0)) for v in result[c]]
                     r = util.nearest_octave(result.loc[m, c].astype('float'), octave_step, si)
                     if standardize:
                         if si == '':

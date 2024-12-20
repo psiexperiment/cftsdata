@@ -39,8 +39,8 @@ def load_abr_waveforms(filename):
     df = pd.read_csv(filename, header=[0, 1, 2, 3], index_col=0)
     df = df.droplevel(['epoch_n', 'epoch_reject_ratio'], axis='columns')
     f = df.columns.get_level_values(0)
-    # Convert frequencies to float if tones else keep as-is
-    f = [v if v == 'click' else float(v) for v in f]
+    # Convert frequencies to float if tones or Enum value for click
+    f = [abr.ABRStim.CLICK.value if v == 'click' else float(v) for v in f]
     l = df.columns.get_level_values(1).astype('float')
     df.columns = [f, l]
     df.columns.names = ['frequency', 'level']
