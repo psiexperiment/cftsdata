@@ -41,16 +41,21 @@ class EFR(Recording):
 
         return result
 
-    def _get_epochs(self, signal, columns='auto'):
+    def _get_epochs(self, signal, downsample=None, columns='auto'):
         duration = self.get_setting('duration')
-        return signal.get_epochs(self.analyze_efr_metadata, 0, duration, columns=columns)
+        return signal.get_epochs(self.analyze_efr_metadata, 0, duration,
+                                 downsample=downsample, columns=columns)
 
     @property
     def mic(self):
         return self.system_microphone
 
-    def get_eeg_epochs(self, columns='auto'):
-        return self._get_epochs(self.eeg, columns=columns)
+    def get_eeg_epochs(self, target_fs=None, columns='auto'):
+        if target_fs is not None:
+            n_dec = int(self.eeg.fs // target_fs)
+        else:
+            n_dec = None
+        return self._get_epochs(self.eeg, downsample=n_dec, columns=columns)
 
     def get_mic_epochs(self, columns='auto'):
         return self._get_epochs(self.mic, columns=columns)
