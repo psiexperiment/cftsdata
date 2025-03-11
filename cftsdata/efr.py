@@ -1,5 +1,7 @@
 from functools import lru_cache
 
+import pandas as pd
+
 from psidata.api import Recording
 
 
@@ -41,24 +43,48 @@ class EFR(Recording):
 
         return result
 
-    def _get_epochs(self, signal, downsample=None, columns='auto'):
+    def _get_epochs(self, signal, downsample=None, segment_duration=None, columns='auto'):
         duration = self.get_setting('duration')
-        return signal.get_epochs(self.analyze_efr_metadata, 0, duration,
-                                 downsample=downsample, columns=columns)
+        result = signal.get_epochs(self.analyze_efr_metadata, 0, duration,
+                                   downsample=downsample, columns=columns)
+        if segment_duration is not None:
+            n_segments = self.get_setting('duration') / segment_duration
+            if n_segments != int(n_segments):
+                raise ValueError('Cannot segment into {n_segments} equally-sized segments')
+            n_segments = int(n_segments)
+
+            reshaped = {}
+            for key, row in result.iterrows():
+                time = row.index.values
+                signal = row.values
+                time = time.reshape((n_segments, -1))
+                signal = signal.reshape((n_segments, -1))
+                signal = pd.DataFrame(signal, columns=time[0], index=time[:, 0])
+                signal.index.name = 't0_segment'
+                signal.columns.name = 'time'
+                reshaped[key] = signal
+            reshaped = pd.concat(reshaped, names=result.index.names)
+            reshaped.attrs.update(result.attrs)
+            return reshaped
+
+        return result
 
     @property
     def mic(self):
         return self.system_microphone
 
-    def get_eeg_epochs(self, target_fs=None, columns='auto'):
+    def get_eeg_epochs(self, target_fs=None, segment_duration=None,
+                       columns='auto'):
         if target_fs is not None:
             n_dec = int(self.eeg.fs // target_fs)
         else:
             n_dec = None
-        return self._get_epochs(self.eeg, downsample=n_dec, columns=columns)
+        return self._get_epochs(self.eeg, downsample=n_dec,
+                                segment_duration=segment_duration,
+                                columns=columns)
 
-    def get_mic_epochs(self, columns='auto'):
-        return self._get_epochs(self.mic, columns=columns)
+    def get_mic_epochs(self, segment_duration=None, columns='auto'):
+        return self._get_epochs(self.mic, segment_duration=segment_duration, columns=columns)
 
     @property
     def level(self):
