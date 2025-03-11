@@ -371,6 +371,25 @@ class Dataset:
                           parse_psi_filename,
                           **kwargs)
 
+    def load_abrpresto_th(self):
+        def _load_abrpresto_th(x):
+            data = json.loads(x.read_text())
+            thresholds = {}
+            for k, v in data.items():
+                if k == 'click':
+                    freq = ABRStim.CLICK.value
+                else:
+                    freq = float(k)
+                thresholds[freq] = v['threshold']
+            result = pd.Series(thresholds)
+            result.index.name = 'frequency'
+            result.name = 'threshold'
+            return result.to_frame().reset_index()
+
+        return self.load(_load_abrpresto_th,
+                          '**/*ABRpresto threshold.json',
+                          parse_psi_filename)
+
     def load_abr_waveforms(self, frequency=None, level=None, **kwargs):
         def _load_abr_waveforms(x):
             nonlocal frequency
