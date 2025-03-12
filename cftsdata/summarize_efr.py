@@ -167,16 +167,27 @@ def get_spl(mic_df, cal):
     return pd.concat(spl, names=['fm', 'fc']).rename('SPL')
 
 
-def get_level(spl, efr_type):
+def get_level(mic_df, calibration, efr_type):
     level_harmonics = np.arange(-10, 11) if efr_type == 'ram' else np.arange(-1, 2)
 
     level_spl = {}
-    for (fm, fc), df in spl.groupby(['fm', 'fc'], group_keys=False):
-        df = df.reset_index(['fm', 'fc'], drop=True)
+    for (fm, fc), df in mic_df.groupby(['fm', 'fc']):
+        n_pol = len(df.index.get_level_values('polarity').unique())
+        if n_pol == 2:
+            df_mean = df.groupby('polarity').mean()
+            df_mean = 0.5 * (df_mean.loc[1] - df_mean.loc[-1])
+        elif n_pol == 1:
+            df_mean = df.mean(axis=0)
+
         level_freqs = fc + fm * level_harmonics
-        max_freq = df.index.max()
+        max_freq = mic_df.attrs['fs'] * 0.5
         level_freqs = level_freqs[(level_freqs > 0) & (level_freqs <= max_freq)]
-        level_spl[fm, fc] = df.loc[level_freqs]
+
+        psd = util.tone_power_conv(df_mean, mic_df.attrs['fs'], level_freqs)
+        spl = calibration.get_db(level_freqs, psd)
+        spl = pd.Series(spl, index=level_freqs, name='SPL')
+        spl.index.name = 'frequency'
+        level_spl[fm, fc] = spl
 
     return pd.concat(level_spl, names=['fm', 'fc']).rename('SPL')
 
