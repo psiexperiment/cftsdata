@@ -219,7 +219,8 @@ def process_file(filename, manager, segment_duration=0.5, n_draw=128,
         harmonics = extract_harmonics(eeg_bs, efr_harmonics)
         spectrum_figure = plot_eeg(eeg_bs, harmonics)
 
-        mic_df = fh.get_mic_epochs(segment_duration=segment_duration)
+        mic_df = fh.get_mic_epochs(segment_duration=segment_duration,
+                                   columns=['fm', 'fc', 'polarity'])
         cal = fh.system_microphone.get_calibration()
         spl = get_spl(mic_df, cal)
         level = get_level(spl, fh.efr_type)
@@ -228,10 +229,10 @@ def process_file(filename, manager, segment_duration=0.5, n_draw=128,
 
         manager.save_df(eeg_bs, 'EEG bootstrapped.csv')
         manager.save_df(harmonics, 'EFR harmonics.csv', index=False)
-        manager.save_df(spl, 'stimulus spl.csv')
         manager.save_df(level, 'stimulus levels.csv')
-        manager.save_fig(spectrum_figure, 'EEG spectrum.pdf')
+        manager.save_df(spl, 'stimulus SPL.csv')
         manager.save_fig(spl_figure, 'stimulus SPL.pdf')
+        manager.save_fig(spectrum_figure, 'EEG spectrum.pdf')
         manager.save_dict(settings, 'EFR processing settings.json')
 
 
