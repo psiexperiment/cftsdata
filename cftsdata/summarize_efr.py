@@ -9,6 +9,10 @@ from psiaudio import util
 from psidata.manager import add_default_options, process_files
 
 from .efr import EFR
+from .util import add_default_options, process_files
+
+import cftsdata
+import psiaudio
 
 
 expected_suffixes = [
@@ -217,6 +221,10 @@ def process_file(filename, manager, segment_duration=0.5, n_draw=128,
     settings['filename'] = str(settings['filename'])
     settings['creation_time'] = dt.datetime.now().isoformat()
     settings['n_harmonics'] = efr_harmonics
+    settings['version'] = {
+        'psiaudio': psiaudio.__version__,
+        'cftsdata': cftsdata.__version__,
+    }
 
     with manager.create_cb() as cb:
         fh = EFR(filename)
