@@ -156,8 +156,14 @@ def bootstrap_eeg(eeg_df, n_draw, n_bootstrap, cb=None):
 def get_spl(mic_df, cal):
     spl = {}
     for key, df in mic_df.groupby(['fm', 'fc']):
-        df_mean = df.groupby('polarity').mean()
-        df_mean = 0.5 * (df_mean.loc[1] - df_mean.loc[-1])
+        n_pol = len(df.index.get_level_values('polarity').unique())
+        if n_pol == 2:
+            df_mean = df.groupby('polarity').mean()
+            df_mean = 0.5 * (df_mean.loc[1] - df_mean.loc[-1])
+        elif n_pol == 1:
+            df_mean = df.mean(axis=0)
+        else:
+            raise ValueError('Unexpected polarity')
         psd = util.psd_df(df_mean, fs=mic_df.attrs['fs'], window='hann')
         spl[key] = cal.get_db(psd)
     return pd.concat(spl, names=['fm', 'fc']).rename('SPL')
