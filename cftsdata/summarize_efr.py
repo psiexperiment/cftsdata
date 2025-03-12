@@ -47,7 +47,8 @@ def plot_eeg(eeg_bs_all, harmonics):
     n_fm = len(all_fm)
     n_fc = len(all_fc)
 
-    figure, axes = plt.subplots(n_fm, n_fc, figsize=(4*n_fc, 4*n_fm), sharex='row', sharey='row')
+    figure, axes = plt.subplots(n_fm, n_fc, figsize=(4*n_fc, 4*n_fm),
+                                sharex='row', sharey='row', squeeze=False)
 
     for fm, row_df in eeg_bs_all.groupby('fm'):
         for fc, df in row_df.groupby('fc'):
@@ -81,7 +82,8 @@ def plot_spl(spl, requested_level, actual_level):
     n_fm = len(all_fm)
     n_fc = len(all_fc)
 
-    figure, axes = plt.subplots(n_fm, n_fc, figsize=(4*n_fc, 4*n_fm), sharex='row', sharey='row')
+    figure, axes = plt.subplots(n_fm, n_fc, figsize=(4*n_fc, 4*n_fm),
+                                sharex='row', sharey='row', squeeze=False)
 
     for fm, row_df in spl.groupby('fm'):
         for fc, df in row_df.groupby('fc'):
