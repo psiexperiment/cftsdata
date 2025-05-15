@@ -48,16 +48,12 @@ def parse_psi_filename(filename):
         raise ValueError(f'Could not parse {filename.stem}')
 
 
-def load_efr_level(filename, which='total'):
-    result = pd.read_csv(filename, index_col=['fm', 'fc', 'frequency']) \
-        ['level (dB SPL)'].rename('level').reset_index()
-    if which == 'total':
-        result = result.query('frequency == "total"').drop(columns=['frequency'])
-    elif which == 'harmonics':
-        result = result.query('frequency != "total"')
-        result['frequency'] = result['frequency'].astype('f')
-    else:
-        raise ValueError(f'Unrecognized parameter for which: "{which}"')
+def load_efr_level(filename, sum_harmonics=True):
+    result = pd.read_csv(filename).rename(columns={'SPL': 'level'})
+    if sum_harmonics:
+        result = result.groupby(['fm', 'fc'])['level'] \
+            .apply(lambda x: util.db(util.dbi(x).sum())) \
+            .reset_index()
     return result
 
 
