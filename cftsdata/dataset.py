@@ -185,7 +185,13 @@ class Dataset:
         return self.load(cb, wildcard, data_path=self.raw_ephys_path, **kwargs)
 
     def load_experiment_info(self, **kwargs):
-        return self.load_raw(lambda x: {}, filename_parser=parse_psi_filename,
+        '''
+        Load experiment info
+
+        Includes `filename` as a column.
+        '''
+        return self.load_raw(lambda x: {'filename': x},
+                             filename_parser=parse_psi_filename,
                              **kwargs)
 
     def load_csv_header(self, filename, index_col=0, etype=None, **kwargs):
