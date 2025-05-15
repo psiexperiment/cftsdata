@@ -12,6 +12,9 @@ from . import memr
 from .util import add_default_options, process_files
 
 
+NO_HT2_2SAMP_RESULT = stats.ht2_2samp_result(np.nan, np.nan, np.nan, np.nan)
+
+
 th_expected_suffixes = [
     'HT2 threshold diagnostics.pdf',
     'HT2 2samp.csv',
@@ -223,8 +226,13 @@ def compute_ht2_2samp_valero(x, train=None):
             return pd.Series({'T2': np.nan, 'F': np.nan, 'p': np.nan, 'df': np.nan})
     else:
         train = np.abs(train)
-    test = x.xs('elicitor', level='group')
-    result = stats.ht2_2samp(train, test)
+    try:
+        test = x.xs('elicitor', level='group')
+        result = stats.ht2_2samp(train, test)
+    except KeyError:
+        # There are no elicitor trials to analyze, probably because they all
+        # got rejected.
+        result = NO_HT2_2SAMP_RESULT
     return pd.Series(result, index=result._fields)
 
 
