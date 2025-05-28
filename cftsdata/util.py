@@ -300,7 +300,7 @@ class SplitDatasetManager(BaseDatasetManager):
     experiment.
     '''
 
-    def __init__(self, path, raw_dir=None, proc_dir=None, file_template=None):
+    def __init__(self, path, raw_dir=None, proc_dir=None, cb='tqdm', file_template=None):
         '''
         Manages paths of processed files given the relative path between the
         raw and processed directory structure.
@@ -314,7 +314,7 @@ class SplitDatasetManager(BaseDatasetManager):
         file_template : {None, str}
             If None, defaults to the filename stem
         '''
-        super().__init__(path, file_template)
+        super().__init__(path, cb=cb, file_template=file_template)
         if raw_dir is None:
             raw_dir = os.environ.get('RAW_DATA_DIR', None)
         if proc_dir is None:
