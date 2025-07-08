@@ -309,12 +309,25 @@ class Dataset:
         return df
 
     def load_iec_psd(self, **kwargs):
-        return self.load(
+        etype = 'inear_speaker_calibration_chirp'
+        result = self.load(
             lambda x: pd.read_csv(x),
             '**/*inear_speaker_calibration_chirp psd.csv',
             parse_psi_filename,
             **kwargs
         )
+        query = {
+            'starship_A': 'input.starship_A_microphone.calibration.attrs.name',
+            'starship_B': 'input.starship_B_microphone.calibration.attrs.name',
+        }
+        starship = self.load_raw_jmes('io.json', query, etype, **kwargs) \
+            .set_index('datetime', verify_integrity=True)[['starship_A', 'starship_B']]
+        metadata = self.load_csv_header('epoch_metadata.csv', etype=etype) \
+            .set_index('datetime', verify_integrity=True)[['system', 'system_output']]
+        merged = result.join(starship, on='datetime').join(metadata, on='datetime')
+        merged['starship'] = merged.apply(lambda x: x[x['system']], axis=1)
+        return merged.drop(['system', 'starship_A', 'starship_B'], axis=1)
+
 
     def load_dpoae_io(self, **kwargs):
         return self.load(lambda x: pd.read_csv(x),
