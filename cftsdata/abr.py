@@ -252,10 +252,11 @@ class ABRFile(Recording):
             # program, so we set it to the default that was used before if not
             # present.
             reject_threshold = self.get_setting('reject_threshold')
-            reject_mode = self.get_setting_default('reject_mode', 'absolute')
+            reject_mode = self.get_setting_default('reject_mode', 'absolute value')
 
-        if reject_mode == 'absolute':
-            m = (result < reject_threshold).all(axis=1)
+        if reject_mode == 'absolute value':
+            m = np.abs(result) < reject_threshold
+            m = m.all(axis=1)
             result = result.loc[m]
         elif reject_mode == 'amplitude':
             # TODO
