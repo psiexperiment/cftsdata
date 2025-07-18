@@ -48,9 +48,15 @@ def process_file(filename, manager, start_delay=1,
             noise_correction = 0
         noise_level = float(noise_level)
 
-        n_samples = fh.monitor_microphone.shape[-1]
-        fs = fh.monitor_microphone.fs
-        cal = fh.monitor_microphone.get_calibration()
+        # The names got changed in `noise-exp`, so we need to look for both.
+        try:
+            mic = fh.microphone_monitor
+        except:
+            mic = fh.monitor_microphone
+
+        n_samples = mic.shape[-1]
+        fs = mic.fs
+        cal = mic.get_calibration()
 
         n_analysis_samples = int(round(analysis_window * fs))
         n_segment_samples = int(round(segment_duration * fs))
@@ -69,9 +75,9 @@ def process_file(filename, manager, start_delay=1,
             cb(i/n_segments)
             lb = i_start + n_segment_samples * i
             ub = lb + n_segment_samples
-            mic = fh.monitor_microphone[0, lb:ub].reshape((-1, n_analysis_samples))
-            mic_mean.append(mic.mean(axis=1))
-            mic_detrend = signal.detrend(mic, -1, 'linear')
+            chunk = mic[0, lb:ub].reshape((-1, n_analysis_samples))
+            mic_mean.append(chunk.mean(axis=1))
+            mic_detrend = signal.detrend(chunk, -1, 'linear')
             mic_detrend = signal.filtfilt(b, a, mic_detrend)
             mic_rms.append(util.rms(mic_detrend, axis=-1))
             mic_psd.append(util.psd_df(mic_detrend, fs=fs))
