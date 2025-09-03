@@ -492,6 +492,13 @@ def load_abr_analysis(filename,
         update_cols.remove('baseline_std')
         update_cols.remove('level')
         data.loc[m, update_cols] = np.nan
+    elif subthreshold_handling == 'na':
+        m = data['level'] < th
+        update_cols = keep[:]
+        update_cols.remove('baseline')
+        update_cols.remove('baseline_std')
+        update_cols.remove('level')
+        data.loc[m, update_cols] = pd.NA
 
     data = data.set_index('level', verify_integrity=True).sort_index()
 
