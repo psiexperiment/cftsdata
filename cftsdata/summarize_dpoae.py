@@ -150,14 +150,17 @@ def process_file_dpoae(filename, manager):
             ax.set_ylabel('PSD (dB SPL)')
 
         th = measured.groupby('f2').apply(isodp_th_criterions)
-        th_figure, ax = plt.subplots(1, 1, figsize=(4, 4))
+        n_freq = len(freq)
+        print(n_freq)
+        th_figure, ax = plt.subplots(1, 1, figsize=(4 * n_freq / 5, 4))
         for c, row in th.T.iterrows():
             ax.plot(row, 'o-', label=str(c))
         ax.set_xscale('octave', octaves=0.5)
         ax.set_xlabel('$f_2$ frequency (kHz)')
         ax.set_ylabel('IsoDP threshold (dB SPL)')
         ax.legend(bbox_to_anchor=(1, 1), loc='upper left')
-        ax.axis(xmin=5.6e3*0.8, xmax=45.3e3/0.8, ymin=0, ymax=80)
+        axes[0, 0].axis(xmin=min(freq) * 0.8, xmax=max(freq) / 0.8)
+        ax.axis(xmin=min_freq*0.8, xmax=max_freq/0.8, ymin=0, ymax=80)
 
         manager.save_dataframe(measured, 'io.csv')
         manager.save_dataframe(th, 'th.csv')
