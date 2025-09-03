@@ -30,12 +30,9 @@ docs = ["sphinx", "sphinx_rtd_theme", "pygments-enaml"]
 test = ["pytest", "pytest-console-scripts"]
 
 [project.scripts]
-cfts-zip-data = "cftsdata.postprocess:zip_data"
-cfts-split-data = "cftsdata.postprocess:split_data"
 cfts-zip-unrated-abr-data = "cftsdata.postprocess:zip_unrated_abr_data"
 cfts-zip-multirater-abr-data = "cftsdata.postprocess:zip_multirater_abr_data"
 cfts-invert-eeg-data = "cftsdata.postprocess:invert_eeg_data"
-cfts-merge-pdf = "cftsdata.postprocess:merge_pdf"
 
 summarize-abr = "cftsdata.summarize_abr:main"
 summarize-abrpresto = "cftsdata.abrpresto:main"
