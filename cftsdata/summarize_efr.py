@@ -6,11 +6,9 @@ import pandas as pd
 from scipy import signal
 
 from psiaudio import util
+from psidata.manager import add_default_options, process_files
 
 from .efr import EFR
-from .util import add_default_options, process_files
-
-from psiaudio.efr import efr_bs_verhulst
 
 
 expected_suffixes = [

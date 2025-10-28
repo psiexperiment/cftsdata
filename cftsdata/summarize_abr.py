@@ -18,7 +18,7 @@ from psiaudio import util
 
 from . import abr
 
-from .util import add_default_options, process_files
+from psidata.manager import add_default_options, process_files
 
 
 COLUMNS = ['frequency', 'level', 'polarity']

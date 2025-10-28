@@ -4,10 +4,9 @@ import numpy as np
 import pandas as pd
 from scipy import signal
 
-from psidata.api import Recording
 from psiaudio import util
-
-from .util import add_default_options, DatasetManager, process_files
+from psidata.api import Recording
+from psidata.manager import add_default_options, DatasetManager, process_files
 
 
 expected_suffixes = [

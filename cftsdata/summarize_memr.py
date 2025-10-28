@@ -13,9 +13,9 @@ from palettable.colorbrewer import qualitative
 
 from psiaudio.plot import iter_colors, waterfall_plot
 from psiaudio import util, weighting
+from psidata.manager import add_default_options, DatasetManager, process_files
 
 from .memr import InterleavedMEMRFile, SimultaneousMEMRFile, SweepMEMRFile
-from .util import add_default_options, DatasetManager, process_files
 
 
 int_expected_suffixes = [

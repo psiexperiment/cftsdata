@@ -7,9 +7,9 @@ from scipy.stats import chi2
 from psiaudio import util
 from psiaudio import plot
 from psiaudio import stats
+from psidata.manager import add_default_options, process_files
 
 from . import memr
-from .util import add_default_options, process_files
 
 
 NO_HT2_2SAMP_RESULT = stats.ht2_2samp_result(np.nan, np.nan, np.nan, np.nan)

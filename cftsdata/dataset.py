@@ -13,6 +13,7 @@ import pandas as pd
 import yaml
 
 from psiaudio import util
+from psidata.dataset import load
 
 from cftsdata.abr import ABRStim, load_abr_analysis
 from cftsdata.summarize_abr import load_abr_waveforms
@@ -273,40 +274,9 @@ class Dataset:
             data_path = self.ephys_path
         if filename_parser is None:
             filename_parser = parse_psi_filename
-        if should_load_cb is None:
-            should_load_cb = lambda x: True
-        result = []
-        for filename in data_path.glob(glob):
-            try:
-                if '_exclude' in str(filename):
-                    continue
-                if '.imaris_cache' in str(filename):
-                    continue
-                if not should_load_cb(filename):
-                    continue
-                data = cb(filename)
-                info = filename_parser(filename)
-                if include_dataset:
-                    info['dataset'] = filename.parent
-
-                if info_as_cols:
-                    for k, v in info.items():
-                        if k in data:
-                            raise ValueError('Column will get overwritten')
-                        data[k] = v
-                else:
-                    data = pd.concat([data], keys=[tuple(info.values())], names=list(info.keys()))
-
-                result.append(data)
-            except Exception as e:
-                raise ValueError(f'Error processing {filename}') from e
-        if len(result) == 0:
-            raise ValueError('No data found')
-        if isinstance(data, pd.DataFrame):
-            df = pd.concat(result)
-        else:
-            df = pd.DataFrame(result)
-        return df
+        kwargs = locals()
+        kwargs.pop('self')
+        return load(**kwargs)
 
     def load_iec_psd(self, **kwargs):
         etype = 'inear_speaker_calibration_chirp'
@@ -386,7 +356,7 @@ class Dataset:
                           parse_psi_filename,
                           **kwargs)
 
-    def load_abrpresto_th(self):
+    def load_abrpresto_th(self, **kwargs):
         def _load_abrpresto_th(x):
             data = json.loads(x.read_text())
             thresholds = {}
@@ -403,7 +373,7 @@ class Dataset:
 
         return self.load(_load_abrpresto_th,
                           '**/*ABRpresto threshold.json',
-                          parse_psi_filename)
+                          parse_psi_filename, **kwargs)
 
     def load_abr_waveforms(self, frequency=None, level=None, **kwargs):
         def _load_abr_waveforms(x):

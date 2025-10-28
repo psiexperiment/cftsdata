@@ -7,7 +7,14 @@ import pandas as pd
 from psiaudio import stats
 from psiaudio.util import psd_df
 from psidata.api import Recording
-from . import util
+
+
+def add_trial(df, grouping):
+    def _add_trial(df):
+        df['trial'] = range(len(df))
+        return df.set_index('trial', append=True)
+    result = df.groupby(grouping, group_keys=False).apply(_add_trial)
+    return result
 
 
 # Columns to potentially rename.

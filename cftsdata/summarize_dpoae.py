@@ -6,9 +6,9 @@ import numpy as np
 import pandas as pd
 
 from psiaudio import util
+from psidata.manager import add_default_options, DatasetManager, process_files
 
 from .dpoae import DPOAEFile, isodp_th_criterions
-from .util import add_default_options, process_files
 
 
 dpoae_expected_suffixes = [
