@@ -81,6 +81,20 @@ def process_file(filename, manager, start_delay=1,
             mic_rms.append(util.rms(mic_detrend, axis=-1))
             mic_psd.append(util.psd_df(mic_detrend, fs=fs))
 
+        if n_segments == 0:
+            # Edge case for when a noise-exposure was aborted very early.  This
+            # allows us to proceed with analyzing what we can. This is
+            # typically when a calibration run is stopped for some reason.
+            lb = i_start + n_segment_samples
+            ub = lb + n_segment_samples
+            keep = (mic.shape[-1] // n_analysis_samples) * n_analysis_samples
+            chunk = mic[0, :keep].reshape((-1, n_analysis_samples))
+            mic_mean.append(chunk.mean(axis=1))
+            mic_detrend = signal.detrend(chunk, -1, 'linear')
+            mic_detrend = signal.filtfilt(b, a, mic_detrend)
+            mic_rms.append(util.rms(mic_detrend, axis=-1))
+            mic_psd.append(util.psd_df(mic_detrend, fs=fs))
+
         mic_psd = pd.concat(mic_psd, axis=0, ignore_index=True)
         mic_psd.index.name = 'time'
         mic_spl = cal.get_spl(mic_psd.mean(axis=0))
