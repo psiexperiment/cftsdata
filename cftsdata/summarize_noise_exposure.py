@@ -48,10 +48,12 @@ def process_file(filename, manager, start_delay=1,
         noise_level = float(noise_level)
 
         # The names got changed in `noise-exp`, so we need to look for both.
-        try:
+        if hasattr(fh, 'microphone_monitor'):
             mic = fh.microphone_monitor
-        except:
+        elif hasattr(fh, 'monitor_microphone'):
             mic = fh.monitor_microphone
+        else:
+            raise ValueError('No microphone data found in recording')
 
         n_samples = mic.shape[-1]
         fs = mic.fs
