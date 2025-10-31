@@ -6,7 +6,7 @@ from psiaudio import util
 from psiaudio.calibration import FlatCalibration
 from psiaudio.stim import chirp
 
-from psidata.manager import add_default_options, DatasetManager, process_files
+from psidata.manager import add_default_options, process_files
 
 from .iec import IEC
 

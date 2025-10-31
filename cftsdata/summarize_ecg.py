@@ -6,7 +6,7 @@ from scipy import signal
 from psiaudio import util
 from psidata.api import Recording
 
-from psidata.manager import add_default_options, DatasetManager, process_files
+from psidata.manager import add_default_options, process_files
 
 
 expected_suffixes = [
