@@ -247,11 +247,15 @@ class ABRFile(Recording):
             return result
         if reject_threshold is np.inf:
             return result
-        if reject_threshold == 'saved':
+        if reject_threshold.startswith('saved'):
             # 'reject_mode' wasn't added until a later version of the ABR
             # program, so we set it to the default that was used before if not
             # present.
-            reject_threshold = self.get_setting('reject_threshold')
+            if '-' in reject_threshold:
+                reconcile = reject_threshold.split('-', 1)[1]
+            else:
+                reconcile = None
+            reject_threshold = self.get_setting('reject_threshold', reconcile=reconcile)
             reject_mode = self.get_setting_default('reject_mode', 'absolute value')
 
         if reject_mode == 'absolute value':
@@ -544,7 +548,11 @@ common_docstring = '''
         reject_threshold : {None, 'saved', float}
             Rejects epochs according to the following criteria:
                 * `None`: do not reject trials
-                * 'saved': Use the value stored in the file
+                * 'saved': Use the value stored in the file. If the reject
+                  threshold was changed during acquisition, this will raise an
+                  error. To specify the means of reconcilation (e.g., for last,
+                  use `reject-last`). Valid modes of reconcilation are listed
+                  in `psidata.recording.Recording.get_setting`.
                 * float: Use the provided value.
         reject_mode : string
             Not imlemented

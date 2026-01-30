@@ -8,6 +8,8 @@ import datetime as dt
 from functools import partial
 from math import ceil
 
+import pandas as pd
+
 from ABRpresto._version import __version__ as ABRpresto_version
 from ABRpresto import XCsub
 from psidata.manager import add_default_options, process_files
@@ -22,6 +24,7 @@ COLUMNS = ['frequency', 'level', 'polarity']
 expected_suffixes = [
     'ABRpresto diagnostics.pdf',
     'ABRpresto threshold.json',
+    'ABRpresto threshold.csv',
     'ABRpresto settings.json',
 ]
 
@@ -71,7 +74,8 @@ def process_file(filename, manager, tlb=0, tub=6e-3, target_fs=12.5e3, base_file
         settings['downsample'] = downsample
         settings['actual_fs'] = fh.eeg.fs / downsample
         epochs = fh.get_epochs_filtered(downsample=downsample,
-                                        columns=['frequency', 'level', 'polarity'])
+                                        columns=['frequency', 'level', 'polarity'],
+                                        reject_threshold='saved-last')
 
         result = {}
         figures = []
@@ -81,6 +85,10 @@ def process_file(filename, manager, tlb=0, tub=6e-3, target_fs=12.5e3, base_file
             fig.suptitle(abr.freq_to_label(freq))
             figures.append(fig)
 
+        th_table = pd.Series({k: v['threshold'] for k, v in result.items()}, name='threshold')
+        th_table.index.name = 'frequency'
+
+        manager.save_df(th_table.reset_index(), 'ABRpresto threshold.csv', index=False)
         manager.save_dict(result, 'ABRpresto threshold.json')
         manager.save_dict(settings, 'ABRpresto settings.json')
         manager.save_figs(figures, 'ABRpresto diagnostics.pdf')

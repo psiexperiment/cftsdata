@@ -234,7 +234,7 @@ def process_file(filename, manager, offset=-1e-3, duration=10e-3,
             return epochs
 
         # Apply the reject
-        reject_threshold = fh.get_setting('reject_threshold')
+        reject_threshold = fh.get_setting('reject_threshold', reconcile='last')
         m = np.abs(epochs) < reject_threshold
         m = m.all(axis=1)
         epochs = epochs.loc[m]
