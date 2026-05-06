@@ -46,6 +46,7 @@ summarize-keefe-memr-th = "cftsdata.summarize_memr_th:main_keefe_th"
 summarize-valero-memr = "cftsdata.summarize_memr:main_valero"
 summarize-valero-memr-th = "cftsdata.summarize_memr_th:main_valero_th"
 summarize-sweep-memr = "cftsdata.summarize_memr:main_sweep"
+summarize-sweep-memr-th = "cftsdata.summarize_memr_sweep_th:main_sweep"
 summarize-noise-exposure = "cftsdata.summarize_noise_exposure:main"
 
 [build-system]

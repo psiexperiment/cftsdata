@@ -1,7 +1,14 @@
+import matplotlib.pyplot as plt
+import numpy as np
 from scipy.optimize import curve_fit
 from scipy.stats import norm
 
-from cftsdata.memr import SweepMEMRFile
+import pandas as pd
+from psiaudio import util
+from psidata.manager import add_default_options, process_files
+
+from .memr import SweepMEMRFile
+from .summarize_memr import csd_to_swept_memr, get_sweep_settings, sweep_detrend
 
 
 sweep_expected_suffixes = [
@@ -85,8 +92,8 @@ def process_sweep_file(filename, manager, freq_ub=16000, **kwargs):
         }
 
         manager.save_fig(figure, 'MEMR_threshold.pdf')
-        manager.save_df(ampitude, 'MEMR_threshold_amplitude.csv')
-        manager.save_mapping(stats, 'MEMR_threshold_stats.json')
+        manager.save_df(amplitude, 'MEMR_threshold_amplitude.csv')
+        manager.save_dict(stats, 'MEMR_threshold_stats.json')
 
 
 def main_sweep():
