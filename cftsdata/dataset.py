@@ -13,7 +13,7 @@ import pandas as pd
 import yaml
 
 from psiaudio import util
-from psidata.dataset import load
+from psidata.dataset import load, path_scanner
 
 from cftsdata.abr import ABRStim, load_abr_analysis
 from cftsdata.summarize_abr import load_abr_waveforms
@@ -157,7 +157,7 @@ def coerce_frequency(columns, octave_step, si_prefix='', standardize=True):
 
 class Dataset:
 
-    def __init__(self, ephys_path=None, subpath=None):
+    def __init__(self, ephys_path=None, subpath=None, scanner=None):
         if ephys_path is None:
             ephys_path = os.environ['PROC_DATA_DIR']
         self.ephys_path = Path(ephys_path)
@@ -167,6 +167,9 @@ class Dataset:
         if not self.ephys_path.exists():
             raise ValueError(f'Unknown data path {self.ephys_path}')
         self.raw_ephys_path = self.ephys_path
+        if scanner is None:
+            scanner = path_scanner(self.ephys_path)
+        self.scanner = scanner
 
     def load_raw(self, cb, etype=None, **kwargs):
         '''
@@ -274,8 +277,11 @@ class Dataset:
             data_path = self.ephys_path
         if filename_parser is None:
             filename_parser = parse_psi_filename
+        scanner = self.scanner(glob)
         kwargs = locals()
         kwargs.pop('self')
+        kwargs.pop('glob')
+        kwargs.pop('data_path')
         return load(**kwargs)
 
     def load_iec_psd(self, **kwargs):
@@ -297,7 +303,6 @@ class Dataset:
         merged = result.join(starship, on='datetime').join(metadata, on='datetime')
         merged['starship'] = merged.apply(lambda x: x[x['system']], axis=1)
         return merged.drop(['system', 'starship_A', 'starship_B'], axis=1)
-
 
     def load_dpoae_io(self, **kwargs):
         return self.load(lambda x: pd.read_csv(x),
