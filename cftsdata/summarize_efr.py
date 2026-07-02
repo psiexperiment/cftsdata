@@ -9,7 +9,6 @@ from psiaudio import util
 from psidata.manager import add_default_options, process_files
 
 from .efr import EFR
-from .util import add_default_options, process_files
 
 import cftsdata
 import psiaudio
@@ -240,7 +239,7 @@ def process_file(filename, manager, segment_duration=0.5, n_draw=128,
                                    columns=['fm', 'fc', 'polarity'])
         cal = fh.system_microphone.get_calibration()
         spl = get_spl(mic_df, cal)
-        level = get_level(spl, fh.efr_type)
+        level = get_level(mic_df, cal, fh.efr_type)
         total_level = level.groupby(['fm', 'fc']).apply(lambda x: 10 * np.log10(np.sum(10**(x / 10))))
         spl_figure = plot_spl(spl, fh.level, total_level)
 

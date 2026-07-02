@@ -94,6 +94,7 @@ class DPOAEFile(Recording):
         super().__init__(base_path, setting_table)
         self.results = self._results()
 
+    def _results(self):
         data = getattr(self, 'dpoae_store')
         data = data.rename(columns=dpoae_renamer)
         m = data['capture'].diff() == 0
@@ -103,18 +104,18 @@ class DPOAEFile(Recording):
         # Add in the start/stop time of the actual stimulus itself. The
         # ts_start and ts_end timestamps indicate what was captured for the
         # online analysis.
-        try:
-            ts = self.event_log.query('event == "dpoae_start"')['timestamp'].values.tolist()
-            ts.append(self.system_microphone.duration)
-            ts_start = ts[:-1]
-            ts_end = ts[1:]
-            if len(ts_start) != len(data):
-                raise ValueError('Mismatch between event log and DPOAE metadata')
-            data['dp_start'] = ts_start
-            data['dp_end'] = ts_end
-        except:
+        ts = self.event_log.query('event == "dpoae_start"')['timestamp'].values.tolist()
+        ts.append(self.system_microphone.duration)
+        ts_start = ts[:-1]
+        ts_end = ts[1:]
+        if len(ts_start) != len(data):
+            log.warning('Mismatch between event log and DPOAE metadata. '
+                        f'Found {len(ts_start)} in event log, {len(data)} in metadata.')
             data['dp_start'] = data['ts_start']
             data['dp_end'] = data['ts_end']
+        else:
+            data['dp_start'] = ts_start
+            data['dp_end'] = ts_end
         return data
 
     def iter_segments(self, microphone='system_microphone'):

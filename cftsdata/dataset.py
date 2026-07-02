@@ -102,6 +102,44 @@ def load_memr_amplitude(filename, repeat=None, span=None):
     return df.reset_index()
 
 
+def ensure_suffix(suffix):
+    def decorator(f):
+        @wraps(f)
+        def wrapper(filename, *args, **kwargs):
+            filename = Path(filename)
+            if not filename.name.endswith(suffix):
+                filename = filename / f'{filename.stem} {suffix}'
+            return f(filename, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+@ensure_suffix('ABRpresto threshold.json')
+def load_abrpresto_th(filename):
+    data = json.loads(filename.read_text())
+    thresholds = {}
+    for k, v in data.items():
+        if k == 'click':
+            freq = ABRStim.CLICK.value
+        else:
+            freq = float(k)
+        thresholds[freq] = v['threshold']
+    result = pd.Series(thresholds)
+    result.index.name = 'frequency'
+    result.name = 'threshold'
+    return result
+
+
+@ensure_suffix('th.csv')
+def load_dpoae_th(filename, criterion=None):
+    df = pd.read_csv(filename, index_col=0)
+    df.columns = df.columns.astype('f')
+    if criterion is not None:
+        df = df.loc[:, [criterion]]
+    df.columns.name = 'criterion'
+    return df.stack().rename('threshold')
+
+
 def coerce_frequency(columns, octave_step, si_prefix='', standardize=True):
     '''
     Decorator for methods in subclasses of `Dataset` that coerce frequencies in
@@ -311,15 +349,7 @@ class Dataset:
                           parse_psi_filename, **kwargs)
 
     def load_dpoae_th(self, criterion=None, **kwargs):
-        def _load_dpoae_th(x):
-            df = pd.read_csv(x, index_col=0)
-            df.columns = df.columns.astype('f')
-            if criterion is not None:
-                df = df.loc[:, [criterion]]
-            df.columns.name = 'criterion'
-            return df.stack().rename('threshold').reset_index()
-
-        return self.load(_load_dpoae_th,
+        return self.load(load_dpoae_th,
                           '**/*dpoae_io th.csv',
                           parse_psi_filename, **kwargs)
 
@@ -363,19 +393,6 @@ class Dataset:
                           **kwargs)
 
     def load_abrpresto_th(self, **kwargs):
-        def _load_abrpresto_th(x):
-            data = json.loads(x.read_text())
-            thresholds = {}
-            for k, v in data.items():
-                if k == 'click':
-                    freq = ABRStim.CLICK.value
-                else:
-                    freq = float(k)
-                thresholds[freq] = v['threshold']
-            result = pd.Series(thresholds)
-            result.index.name = 'frequency'
-            result.name = 'threshold'
-            return result.to_frame().reset_index()
 
         return self.load(_load_abrpresto_th,
                           '**/*ABRpresto threshold.json',
