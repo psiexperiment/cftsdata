@@ -98,7 +98,7 @@ class ABRFile(Recording):
         stimulus_type
             'click' or 'tone' depending on stimulus used.
         '''
-        return 'click' if 'abr_io_click' in self.base_path.stem else 'tone'
+        return 'click' if '_io_click' in self.base_path.stem else 'tone'
 
     @property
     @lru_cache(maxsize=MAXSIZE)
@@ -162,7 +162,7 @@ class ABRFile(Recording):
         result = self._apply_reject(result, reject_threshold, reject_mode)
         result = self._apply_n(result, averages)
         if add_frequency:
-            result = pd.concat([result], [self.stimulus_type], names=['frequency'])
+            result = pd.concat([result], keys=[self.stimulus_type], names=['frequency'])
 
         return result
 
