@@ -34,7 +34,7 @@ P_PSI_FILENAME = re.compile(
 	r'(?P<experimenter>\w+)\s'
 	r'(?P<animal_id>[-\w]+)\s'
 	r'((?P<ear>left|right)\s)?(?P<note>.*\s)?'
-	r'(?P<experiment_type>(?:abr|dpoae|efr|memr|inear|dpgram|dual_dpoae)(_\w+)?).*$'
+	r'(?P<experiment_type>(?:abr|dpoae|efr|memr|inear|dpgram|dual_dpoae|mlr_llr)(_\w+)?).*$'
 )
 
 
