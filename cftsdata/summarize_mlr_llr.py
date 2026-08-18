@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from scipy import signal
 
 from . import abr
@@ -14,6 +15,19 @@ EXPECTED_SUFFIXES = [
     'waveforms.pdf',
 ]
 
+
+def load_waveforms(filename):
+    """Load one of the 'ABR/MLR/LLR average waveforms.csv' files saved by
+    ``process_file`` below.
+
+    Unlike ``summarize_abr.load_abr_waveforms``, there's no polarity/epoch_n/
+    epoch_reject_ratio info in the header here -- ``load_epochs`` averages
+    across polarity before saving, leaving a plain ``(frequency, level)``
+    row index and float-time columns.
+    """
+    df = pd.read_csv(filename, index_col=['frequency', 'level'])
+    df.columns = df.columns.astype(float)
+    return df
 
 
 def load_epochs(fh):
