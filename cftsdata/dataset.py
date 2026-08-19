@@ -16,7 +16,19 @@ from psiaudio import util
 from psidata.dataset import load, path_scanner
 
 from cftsdata.abr import ABRStim, load_abr_analysis
-from cftsdata.summarize_abr import load_abr_waveforms
+from cftsdata.summarize_abr import load_abr_waveforms as _load_abr_waveforms
+
+
+def ensure_suffix(suffix):
+    def decorator(f):
+        @wraps(f)
+        def wrapper(filename, *args, **kwargs):
+            filename = Path(filename)
+            if not filename.name.endswith(suffix):
+                filename = filename / f'{filename.stem} {suffix}'
+            return f(filename, *args, **kwargs)
+        return wrapper
+    return decorator
 
 
 class BadFilenameException(Exception):
@@ -59,6 +71,7 @@ def load_efr_level(filename, sum_harmonics=True):
     return result
 
 
+@ensure_suffix('EFR harmonics.csv')
 def load_efr_harmonics(x):
     df = pd.read_csv(x)
     # This corrects for a difference in the data saved between the Bharadwaj
@@ -102,18 +115,6 @@ def load_memr_amplitude(filename, repeat=None, span=None):
     return df.reset_index()
 
 
-def ensure_suffix(suffix):
-    def decorator(f):
-        @wraps(f)
-        def wrapper(filename, *args, **kwargs):
-            filename = Path(filename)
-            if not filename.name.endswith(suffix):
-                filename = filename / f'{filename.stem} {suffix}'
-            return f(filename, *args, **kwargs)
-        return wrapper
-    return decorator
-
-
 @ensure_suffix('ABRpresto threshold.json')
 def load_abrpresto_th(filename):
     data = json.loads(filename.read_text())
@@ -138,6 +139,34 @@ def load_dpoae_th(filename, criterion=None):
         df = df.loc[:, [criterion]]
     df.columns.name = 'criterion'
     return df.stack().rename('threshold')
+
+
+@ensure_suffix('ABR average waveforms.csv')
+def load_abr_waveforms(x, frequency=None, level=None):
+    df = _load_abr_waveforms(x)
+    try:
+        if frequency is not None:
+            df = df.xs(frequency, level='frequency', drop_level=False)
+        if level is not None:
+            df = df.xs(level, level='level', drop_level=False)
+        return df.stack() \
+            .rename('signal') \
+            .reset_index() \
+            .rename(columns={'time': 'timepoint'})
+    except KeyError:
+        return pd.DataFrame()
+
+
+def load_abr_io():
+    # TODO!!! how to handle raters?
+    freq, th, rater, peaks = \
+        load_abr_analysis(x, subthreshold_handling=subthreshold_handling)
+    peaks = peaks.reset_index()
+    peaks['frequency'] = freq
+    peaks['rater'] = rater
+    if level is not None:
+        peaks = peaks.query(f'level == {level}')
+    return peaks
 
 
 def coerce_frequency(columns, octave_step, si_prefix='', standardize=True):
@@ -366,16 +395,7 @@ class Dataset:
                           parse_psi_filename, **kwargs)
 
     def load_abr_io(self, level=None, subthreshold_handling='discard', **kwargs):
-        def _load_abr_io(x):
-            freq, th, rater, peaks = \
-                load_abr_analysis(x, subthreshold_handling=subthreshold_handling)
-            peaks = peaks.reset_index()
-            peaks['frequency'] = freq
-            peaks['rater'] = rater
-            if level is not None:
-                peaks = peaks.query(f'level == {level}')
-            return peaks
-        abr_io = self.load(_load_abr_io,
+        abr_io = self.load(load_abr_io,
                             '**/*analyzed.txt',
                             parse_psi_filename,
                             **kwargs)
@@ -399,21 +419,6 @@ class Dataset:
                           parse_psi_filename, **kwargs)
 
     def load_abr_waveforms(self, frequency=None, level=None, **kwargs):
-        def _load_abr_waveforms(x):
-            nonlocal frequency
-            nonlocal level
-            df = load_abr_waveforms(x)
-            try:
-                if frequency is not None:
-                    df = df.xs(frequency, level='frequency', drop_level=False)
-                if level is not None:
-                    df = df.xs(level, level='level', drop_level=False)
-                return df.stack() \
-                    .rename('signal') \
-                    .reset_index() \
-                    .rename(columns={'time': 'timepoint'})
-            except KeyError:
-                return pd.DataFrame()
 
         return self.load(_load_abr_waveforms,
                          '**/*ABR average waveforms.csv',
