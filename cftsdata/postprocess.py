@@ -1,5 +1,6 @@
 import datetime as dt
 import json
+import os
 from pathlib import Path
 import shutil
 import tempfile
@@ -8,7 +9,51 @@ import zipfile
 import psidata.version
 import cftsdata.version
 
-from .dataset import Dataset
+from . import loaders
+from .util import parse_psi_filename
+
+
+def _find_abr_datasets(path=None, subpath=None):
+    '''
+    Find the processed ABR datasets under `path`
+
+    Parameters
+    ----------
+    path : {None, str, pathlib.Path}
+        Root to scan. Defaults to the `PROC_DATA_DIR` environment variable.
+    subpath : {None, str}
+        If provided, scan only this subfolder of `path`.
+
+    Returns
+    -------
+    path : pathlib.Path
+        The root that was scanned. Zip entries are stored relative to it.
+    folders : list of pathlib.Path
+        Dataset folders containing ABR average waveforms, sorted by name.
+
+    Notes
+    -----
+    `summarize_mlr_llr` writes a file of the same name in a different layout,
+    so datasets are filtered by experiment type rather than by filename alone.
+    '''
+    if path is None:
+        path = os.environ['PROC_DATA_DIR']
+    path = Path(path)
+    if subpath is not None:
+        path = path / subpath
+    if not path.exists():
+        raise ValueError(f'Unknown data path {path}')
+
+    folders = set()
+    for filename in path.rglob(f'*{loaders.abr.SUFFIXES["waveforms"]}'):
+        folder = filename.parent
+        try:
+            info = parse_psi_filename(folder)
+        except ValueError:
+            continue
+        if info['experiment_type'].startswith('abr'):
+            folders.add(folder)
+    return path, sorted(folders)
 
 
 def zip_unrated_abr_data():
@@ -49,11 +94,11 @@ def zip_unrated_abr_data():
             if name.endswith('average waveforms.csv'):
                 exclude_ids.add(_get_id(name))
 
-    dataset = Dataset(ephys_path=args.path, subpath=args.subpath)
+    ephys_path, folders = _find_abr_datasets(args.path, args.subpath)
 
-    freqs = dataset.load_abr_frequencies(include_dataset=True)
-    dataset_map = {_get_id(r['dataset']): r['dataset'] for _, r in freqs.iterrows()}
-    all_datasets = set((_get_id(r['dataset']), r['frequency']) for _, r in freqs.iterrows())
+    dataset_map = {_get_id(f): f for f in folders}
+    all_datasets = set((_get_id(f), frequency) for f in folders
+                       for frequency in loaders.abr.frequencies(f))
 
     if args.min_date is not None:
         min_date = dt.datetime.strptime(args.min_date, '%Y%m%d')
@@ -61,9 +106,11 @@ def zip_unrated_abr_data():
 
     # Filter out datasets that are already rated by one of the raters
     rated_datasets = set()
-    for rater in args.raters:
-        th = dataset.load_abr_th(rater, include_dataset=True)
-        rated_datasets |= set((_get_id(r['dataset']), r['frequency']) for _, r in th.iterrows())
+    for folder in folders:
+        th = loaders.abr.th(folder)
+        for _, row in th.iterrows():
+            if row['rater'] in args.raters:
+                rated_datasets.add((_get_id(folder), row['frequency']))
 
     unrated_ids = set(ds[0] for ds in (all_datasets - rated_datasets))
     include_ids = unrated_ids - exclude_ids
@@ -73,10 +120,10 @@ def zip_unrated_abr_data():
         print(f'Found {len(unrated_ids)} experiments to process. '
               f'Excluding {len(exclude_ids)} from final zip folder.')
         for folder in sorted(include_folders):
-            print(f' • {folder}')
+            print(f' â€¢ {folder}')
 
     if len(include_folders):
-        _zip_abr_folders(include_folders, args.output, dataset.ephys_path, args.raters)
+        _zip_abr_folders(include_folders, args.output, ephys_path, args.raters)
 
 
 def _zip_abr_folders(folders, output, relative_path, raters=None):
@@ -105,13 +152,16 @@ def zip_multirater_abr_data():
     parser.add_argument('-s', '--subpath', type=str)
     parser.add_argument('output', type=Path)
     args = parser.parse_args()
-    dataset = Dataset(ephys_path=args.path, subpath=args.subpath)
+    ephys_path, folders = _find_abr_datasets(args.path, args.subpath)
 
-    th = dataset.load_abr_th(include_dataset=True)
-    n_raters = th.groupby(['dataset', 'frequency'])['rater'].nunique()
-    multiple_raters = n_raters[n_raters > 1]
-    datasets = multiple_raters.index.unique('dataset')
-    _zip_abr_folders(datasets, args.output, dataset.ephys_path)
+    datasets = []
+    for folder in folders:
+        th = loaders.abr.th(folder)
+        if th.empty:
+            continue
+        if th.groupby('frequency')['rater'].nunique().gt(1).any():
+            datasets.append(folder)
+    _zip_abr_folders(datasets, args.output, ephys_path)
 
 
 def invert_eeg_data():

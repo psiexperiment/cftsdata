@@ -16,20 +16,21 @@ from psiaudio import util, weighting
 from psidata.manager import add_default_options, process_files
 
 from .memr import InterleavedMEMRFile, SimultaneousMEMRFile, SweepMEMRFile
+from .loaders.memr import SUFFIXES
 
 
 int_expected_suffixes = [
-    'elicitor level.csv',
-    'MEMR.csv',
+    SUFFIXES['elicitor_level'],
+    SUFFIXES['psd'],
     'MEMR.pdf',
-    'MEMR_total.csv',
+    SUFFIXES['psd_total'],
     'MEMR_total.pdf',
-    'MEMR_amplitude.csv',
-    'MEMR_amplitude_total.csv',
+    SUFFIXES['amplitude'],
+    SUFFIXES['amplitude_total'],
     'probe.pdf',
     'elicitor.pdf',
     'epoch waveform.pdf',
-    'processing settings.json',
+    SUFFIXES['processing_settings'],
 ]
 
 
@@ -410,14 +411,14 @@ def process_interleaved_file(filename, manager, turntable_speed=1.25,
 
 
 sim_expected_suffixes = [
-    'valid count.csv',
-    'elicitor level.csv',
-    'MEMR.csv',
+    SUFFIXES['valid_count'],
+    SUFFIXES['elicitor_level'],
+    SUFFIXES['psd'],
     'MEMR.pdf',
-    'MEMR_total.csv',
+    SUFFIXES['psd_total'],
     'MEMR_total.pdf',
-    'MEMR_amplitude.csv',
-    'MEMR_amplitude_total.csv',
+    SUFFIXES['amplitude'],
+    SUFFIXES['amplitude_total'],
     'probe.pdf',
     'elicitor.pdf',
     'epoch waveform.pdf',
@@ -711,8 +712,8 @@ def plot_sweep_diagnostics(f_max, r_csd, r_csd_dt, r_csd_sm):
 sweep_expected_suffixes = [
     'probe.pdf',
     'elicitor.pdf',
-    'MEMR.csv',
-    'MEMR_total.csv',
+    SUFFIXES['psd'],
+    SUFFIXES['psd_total'],
     'MEMR.pdf',
     'MEMR_block.pdf',
     'diagnostics.pdf',

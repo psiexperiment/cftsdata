@@ -9,11 +9,12 @@ from psiaudio import util
 from psidata.manager import add_default_options, process_files
 
 from .dpoae import DPOAEFile, isodp_th_criterions
+from .loaders.dpoae import SUFFIXES
 
 
 dpoae_expected_suffixes = [
-    'io.csv',
-    'th.csv',
+    SUFFIXES['io'],
+    SUFFIXES['th'],
     'io.pdf',
     'mic spectrum.pdf',
     'th.pdf'
@@ -21,7 +22,7 @@ dpoae_expected_suffixes = [
 
 
 dpgram_expected_suffixes = [
-    'dpgram.csv',
+    SUFFIXES['dpgram'],
     'dpgram.pdf',
     'mic spectrum.pdf',
 ]

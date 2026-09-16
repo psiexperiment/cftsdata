@@ -9,19 +9,20 @@ from psiaudio import util
 from psidata.manager import add_default_options, process_files
 
 from .efr import EFR
+from .loaders.efr import SUFFIXES
 
 import cftsdata
 import psiaudio
 
 
 expected_suffixes = [
-    'EEG bootstrapped.csv',
-    'EFR harmonics.csv',
-    'stimulus levels.csv',
-    'stimulus SPL.csv',
+    SUFFIXES['eeg_bootstrapped'],
+    SUFFIXES['harmonics'],
+    SUFFIXES['level'],
+    SUFFIXES['spl'],
     'stimulus SPL.pdf',
     'EEG spectrum.pdf',
-    'EFR processing settings.json',
+    SUFFIXES['processing_settings'],
 ]
 
 
@@ -228,28 +229,29 @@ def process_file(filename, manager, segment_duration=0.5, n_draw=128,
     with manager.create_cb() as cb:
         fh = EFR(filename)
 
+        # Process and save the EEG
         eeg_df = fh.get_eeg_epochs(target_fs=target_fs,
                                    segment_duration=segment_duration,
                                    columns=['fm', 'fc', 'polarity']).dropna()
         eeg_bs = bootstrap_eeg(eeg_df, n_draw, n_bootstrap, cb)
         harmonics = extract_harmonics(eeg_bs, efr_harmonics)
         spectrum_figure = plot_eeg(eeg_bs, harmonics)
-
-        mic_df = fh.get_mic_epochs(segment_duration=segment_duration,
-                                   columns=['fm', 'fc', 'polarity'])
-        cal = fh.system_microphone.get_calibration()
-        spl = get_spl(mic_df, cal)
-        level = get_level(mic_df, cal, fh.efr_type)
-        total_level = level.groupby(['fm', 'fc']).apply(lambda x: 10 * np.log10(np.sum(10**(x / 10))))
-        spl_figure = plot_spl(spl, fh.level, total_level)
-
         manager.save_df(eeg_bs, 'EEG bootstrapped.csv')
         manager.save_df(harmonics, 'EFR harmonics.csv', index=False)
-        manager.save_df(level, 'stimulus levels.csv')
-        manager.save_df(spl, 'stimulus SPL.csv')
-        manager.save_fig(spl_figure, 'stimulus SPL.pdf')
         manager.save_fig(spectrum_figure, 'EEG spectrum.pdf')
         manager.save_dict(settings, 'EFR processing settings.json')
+
+        if hasattr(fh, 'mic'):
+            mic_df = fh.get_mic_epochs(segment_duration=segment_duration,
+                                    columns=['fm', 'fc', 'polarity'])
+            cal = fh.system_microphone.get_calibration()
+            spl = get_spl(mic_df, cal)
+            level = get_level(mic_df, cal, fh.efr_type)
+            total_level = level.groupby(['fm', 'fc']).apply(lambda x: 10 * np.log10(np.sum(10**(x / 10))))
+            spl_figure = plot_spl(spl, fh.level, total_level)
+            manager.save_df(level, 'stimulus levels.csv')
+            manager.save_df(spl, 'stimulus SPL.csv')
+            manager.save_fig(spl_figure, 'stimulus SPL.pdf')
 
 
 def main():

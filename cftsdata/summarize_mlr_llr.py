@@ -7,42 +7,34 @@ from . import abr
 from psidata.manager import add_default_options, process_files
 from psiaudio import plot
 
+from .loaders.mlr_llr import SUFFIXES
+
 
 EXPECTED_SUFFIXES = [
-    'ABR average waveforms.csv',
-    'MLR average waveforms.csv',
-    'LLR average waveforms.csv',
+    SUFFIXES['abr_waveforms'],
+    SUFFIXES['mlr_waveforms'],
+    SUFFIXES['llr_waveforms'],
     'waveforms.pdf',
 ]
 
 
-def load_waveforms(filename):
-    """Load one of the 'ABR/MLR/LLR average waveforms.csv' files saved by
-    ``process_file`` below.
-
-    Unlike ``summarize_abr.load_abr_waveforms``, there's no polarity/epoch_n/
-    epoch_reject_ratio info in the header here -- ``load_epochs`` averages
-    across polarity before saving, leaving a plain ``(frequency, level)``
-    row index and float-time columns.
-    """
-    df = pd.read_csv(filename, index_col=['frequency', 'level'])
-    df.columns = df.columns.astype(float)
-    return df
-
-
-def load_epochs(fh):
+def load_epochs(fh, average=True, reject_threshold='saved-last', averages='saved'):
     downsample = int(np.ceil(fh.eeg.fs / 10e3))
-    epochs = fh.get_epochs(offset=-100e-3, duration=400e-3, columns=['frequency', 'level', 'polarity'], reject_threshold='saved-last', downsample=downsample)
+    epochs = fh.get_epochs(offset=-100e-3, duration=400e-3, \
+                           columns=['frequency', 'level', 'polarity'],
+                           reject_threshold=reject_threshold,
+                           averages=averages, downsample=downsample)
 
-    epochs_mean = epochs.groupby(['frequency', 'level']).mean()
+    if average:
+        epochs = epochs.groupby(['frequency', 'level']).mean()
     b, a = signal.butter(2, [300, 3000], 'band', fs=epochs.attrs['fs'])
-    abr = epochs_mean.apply(lambda x: signal.filtfilt(b, a, x), axis=1, result_type='broadcast')
+    abr = epochs.apply(lambda x: signal.filtfilt(b, a, x), axis=1, result_type='broadcast')
     abr = abr.loc[:, -0.001:0.01]
     b, a = signal.butter(2, [10, 100], 'band', fs=epochs.attrs['fs'])
-    mlr = epochs_mean.apply(lambda x: signal.filtfilt(b, a, x), axis=1, result_type='broadcast')
+    mlr = epochs.apply(lambda x: signal.filtfilt(b, a, x), axis=1, result_type='broadcast')
     mlr = mlr.loc[:, -0.01:0.05]
     b, a = signal.butter(2, [1, 30], 'band', fs=epochs.attrs['fs'])
-    llr = epochs_mean.apply(lambda x: signal.filtfilt(b, a, x), axis=1, result_type='broadcast')
+    llr = epochs.apply(lambda x: signal.filtfilt(b, a, x), axis=1, result_type='broadcast')
     llr = llr.loc[:, -0.05:0.3]
     return {
         'ABR': abr,

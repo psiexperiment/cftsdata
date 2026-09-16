@@ -17,6 +17,7 @@ from psiaudio.plot import waterfall_plot
 from psiaudio import util
 
 from . import abr
+from .loaders.abr import SUFFIXES as ABR_SUFFIXES
 
 from psidata.manager import add_default_options, process_files
 
@@ -25,26 +26,14 @@ COLUMNS = ['frequency', 'level', 'polarity']
 
 
 abr_expected_suffixes = [
-    'ABR average waveforms.csv',
-    'ABR processing settings.json',
-    'ABR experiment settings.json',
+    ABR_SUFFIXES['waveforms'],
+    ABR_SUFFIXES['processing_settings'],
+    ABR_SUFFIXES['settings'],
     'ABR waveforms.pdf',
     'ABR eeg spectrum.pdf',
-    'ABR eeg spectrum.csv',
-    'ABR eeg rms.json',
+    ABR_SUFFIXES['eeg_spectrum'],
+    ABR_SUFFIXES['eeg_rms'],
 ]
-
-
-def load_abr_waveforms(filename):
-    df = pd.read_csv(filename, header=[0, 1, 2, 3], index_col=0)
-    df = df.droplevel(['epoch_n', 'epoch_reject_ratio'], axis='columns')
-    f = df.columns.get_level_values(0)
-    # Convert frequencies to float if tones or Enum value for click
-    f = [abr.ABRStim.CLICK.value if v == 'click' else float(v) for v in f]
-    l = df.columns.get_level_values(1).astype('float')
-    df.columns = [f, l]
-    df.columns.names = ['frequency', 'level']
-    return df.T
 
 
 def _get_filter(fh):

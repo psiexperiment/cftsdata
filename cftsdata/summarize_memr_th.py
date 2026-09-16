@@ -10,6 +10,7 @@ from psiaudio import stats
 from psidata.manager import add_default_options, process_files
 
 from . import memr
+from .loaders.memr import th_suffix
 
 
 NO_HT2_2SAMP_RESULT = stats.ht2_2samp_result(np.nan, np.nan, np.nan, np.nan)
@@ -17,11 +18,11 @@ NO_HT2_2SAMP_RESULT = stats.ht2_2samp_result(np.nan, np.nan, np.nan, np.nan)
 
 th_expected_suffixes = [
     'HT2 threshold diagnostics.pdf',
-    'HT2 2samp.csv',
-    'HT2 threshold.json',
-    'HT2 processing settings.json',
-    'HT2 raw amplitude.csv',
-    'HT2 fitted amplitude.csv',
+    th_suffix('two_sample'),
+    th_suffix('threshold'),
+    th_suffix('processing_settings'),
+    th_suffix('raw_amplitude'),
+    th_suffix('fitted_amplitude'),
 ]
 
 
