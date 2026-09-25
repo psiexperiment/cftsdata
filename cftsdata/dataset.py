@@ -33,7 +33,7 @@ class Dataset:
 
     def __init__(self, ephys_path=None, subpath=None, scanner=None):
         if ephys_path is None:
-            ephys_path = os.environ['PROC_DATA_DIR']
+            ephys_path = os.environ['PSIDATA_PROC_DIR']
         self.ephys_path = Path(ephys_path)
         self.subpath = subpath
         if subpath is not None:

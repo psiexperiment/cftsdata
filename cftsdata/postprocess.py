@@ -20,7 +20,7 @@ def _find_abr_datasets(path=None, subpath=None):
     Parameters
     ----------
     path : {None, str, pathlib.Path}
-        Root to scan. Defaults to the `PROC_DATA_DIR` environment variable.
+        Root to scan. Defaults to the `PSIDATA_PROC_DIR` environment variable.
     subpath : {None, str}
         If provided, scan only this subfolder of `path`.
 
@@ -37,7 +37,7 @@ def _find_abr_datasets(path=None, subpath=None):
     so datasets are filtered by experiment type rather than by filename alone.
     '''
     if path is None:
-        path = os.environ['PROC_DATA_DIR']
+        path = os.environ['PSIDATA_PROC_DIR']
     path = Path(path)
     if subpath is not None:
         path = path / subpath
