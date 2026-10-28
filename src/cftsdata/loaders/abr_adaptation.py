@@ -12,7 +12,6 @@ from ._util import ensure_suffix
 SUFFIXES = {
     'waveforms': 'ABR adaptation average waveforms.csv',
     'train_waveforms': 'ABR adaptation train waveforms.csv',
-    'amplitude': 'ABR adaptation amplitude.csv',
     'trials': 'ABR adaptation trials.csv',
     'processing_settings': 'ABR adaptation processing settings.json',
     'settings': 'ABR adaptation experiment settings.json',
@@ -87,23 +86,6 @@ def train_waveforms(filename, frequency=None, level=None):
         (in seconds re. the start of the train).
     '''
     df = _read_waveforms(filename, [0, 1])
-    return _select(df, frequency=frequency, level=level)
-
-
-@ensure_suffix(SUFFIXES['amplitude'])
-def amplitude(filename, frequency=None, level=None):
-    '''
-    Load the amplitude of each repeat
-
-    Returns
-    -------
-    df : pd.DataFrame
-        Indexed by frequency, level and repeat. Columns are the start of the
-        repeat re. the start of the train (`repeat_t0`, in seconds), the
-        peak-to-peak (`ptp`) and RMS (`rms`) amplitude in the analysis window,
-        and both normalized to the first repeat (`ptp_norm`, `rms_norm`).
-    '''
-    df = _code_click(pd.read_csv(filename, index_col=[0, 1, 2]))
     return _select(df, frequency=frequency, level=level)
 
 

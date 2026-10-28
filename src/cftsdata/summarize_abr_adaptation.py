@@ -16,8 +16,7 @@ Each step is a separate function so that they can be used on their own, e.g.:
     trains, valid = s.reject_trains(trains, fh.get_setting('reject_threshold'))
     repeats = fh.cut_repeats(trains)
     repeat_mean = s.average(repeats)
-    amplitude = s.repeat_amplitude(repeat_mean)
-    s.plot_amplitude(amplitude)
+    s.plot_repeat_overlay(repeat_mean)
 
 '''
 import logging
@@ -27,6 +26,9 @@ import argparse
 import datetime as dt
 from pathlib import Path
 
+from matplotlib import colormaps
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -48,15 +50,14 @@ CONDITIONS = ['frequency', 'level']
 expected_suffixes = [
     SUFFIXES['waveforms'],
     SUFFIXES['train_waveforms'],
-    SUFFIXES['amplitude'],
     SUFFIXES['trials'],
     SUFFIXES['processing_settings'],
     SUFFIXES['settings'],
     SUFFIXES['eeg_spectrum'],
     SUFFIXES['eeg_rms'],
     'ABR adaptation waveforms.pdf',
+    'ABR adaptation overlay.pdf',
     'ABR adaptation train.pdf',
-    'ABR adaptation amplitude.pdf',
     'ABR adaptation eeg spectrum.pdf',
 ]
 
@@ -146,48 +147,6 @@ def average(epochs):
     return mean
 
 
-def repeat_amplitude(repeat_mean, window=(1e-3, 6e-3), repeat_t0=None):
-    '''
-    Amplitude of each repeat within the analysis window
-
-    Parameters
-    ----------
-    repeat_mean : pd.DataFrame
-        Average waveform of each repeat as returned by `average`.
-    window : (float, float)
-        Start and end of the analysis window, in seconds re. burst onset.
-    repeat_t0 : {None, array}
-        If provided, start of each repeat re. the start of the train (see
-        `ABRAdaptationFile.repeat_t0`), which is added as a column.
-
-    Returns
-    -------
-    amplitude : pd.DataFrame
-        Peak-to-peak (`ptp`) and RMS (`rms`) amplitude in the window, and both
-        normalized to the first repeat (`ptp_norm`, `rms_norm`).
-    '''
-    lb, ub = window
-    w = repeat_mean.loc[:, lb:ub]
-    amplitude = pd.DataFrame({
-        'ptp': w.max(axis=1) - w.min(axis=1),
-        'rms': np.sqrt((w ** 2).mean(axis=1)),
-    })
-    if repeat_t0 is not None:
-        repeats = amplitude.index.get_level_values('repeat')
-        amplitude.insert(0, 'repeat_t0', np.asarray(repeat_t0)[repeats])
-    norm = normalize_amplitude(amplitude[['ptp', 'rms']])
-    return amplitude.join(norm.add_suffix('_norm'))
-
-
-def normalize_amplitude(amplitude, repeat=0):
-    '''
-    Express amplitude relative to that of the given repeat
-    '''
-    reference = amplitude.xs(repeat, level='repeat')
-    return amplitude / reference.reindex(
-        amplitude.index.droplevel('repeat')).values
-
-
 ################################################################################
 # Plotting
 ################################################################################
@@ -196,7 +155,7 @@ def _panel_title(key):
     return f'{freq_to_label(frequency, "k")}, {level:.0f} dB SPL'
 
 
-def plot_repeat_waveforms(repeat_mean, window=None):
+def plot_repeat_waveforms(repeat_mean):
     '''
     Waterfall plot of the average waveform of each repeat
 
@@ -206,8 +165,6 @@ def plot_repeat_waveforms(repeat_mean, window=None):
     ----------
     repeat_mean : pd.DataFrame
         Average waveform of each repeat as returned by `average`.
-    window : {None, (float, float)}
-        If provided, shade the window used to measure amplitude.
     '''
     grouped = repeat_mean.groupby(CONDITIONS)
     n_panels = len(grouped)
@@ -219,10 +176,43 @@ def plot_repeat_waveforms(repeat_mean, window=None):
         data = data.sort_index(level='repeat', ascending=False)
         waterfall_plot(ax, data, 'repeat', x_transform=lambda x: x*1e3,
                        plotkw={'lw': 0.75}, label_fmt=lambda x: str(x + 1))
-        if window is not None:
-            ax.axvspan(window[0]*1e3, window[1]*1e3, color='0.9', zorder=-1)
         ax.set_title(_panel_title(key))
         ax.set_xlabel('Time re. burst onset (msec)')
+    return figure
+
+
+def plot_repeat_overlay(repeat_mean, cmap='viridis'):
+    '''
+    Average waveform of each repeat overlaid, colored by position in the train
+
+    One panel per frequency and level. Later repeats are drawn on top of
+    earlier ones.
+
+    Parameters
+    ----------
+    repeat_mean : pd.DataFrame
+        Average waveform of each repeat as returned by `average`.
+    cmap : str
+        Name of a sequential matplotlib colormap.
+    '''
+    grouped = repeat_mean.groupby(CONDITIONS)
+    n_panels = len(grouped)
+    repeats = repeat_mean.index.get_level_values('repeat')
+    # Color by burst number (counting from 1).
+    norm = Normalize(repeats.min() + 1, repeats.max() + 1)
+    cmap = colormaps[cmap]
+    figure, axes = plt.subplots(1, n_panels, figsize=(6*n_panels, 4),
+                                squeeze=False, constrained_layout=True)
+    for ax, (key, data) in zip(axes[0], grouped):
+        t = data.columns.values * 1e3
+        for repeat, row in data.groupby('repeat'):
+            ax.plot(t, row.iloc[0].values, lw=0.75,
+                    color=cmap(norm(repeat + 1)))
+        ax.set_title(_panel_title(key))
+        ax.set_xlabel('Time re. burst onset (msec)')
+        ax.set_ylabel('Amplitude (V)')
+    figure.colorbar(ScalarMappable(norm=norm, cmap=cmap), ax=axes[0, -1],
+                    label='Burst #')
     return figure
 
 
@@ -248,48 +238,12 @@ def plot_train_waveforms(train_mean, repeat_t0):
     return figure
 
 
-def plot_amplitude(amplitude, measure='ptp'):
-    '''
-    Amplitude of each repeat as a function of its position in the train
-
-    One panel per frequency, with one line per level. The top row shows the
-    amplitude and the bottom row the amplitude normalized to the first repeat.
-
-    Parameters
-    ----------
-    amplitude : pd.DataFrame
-        Amplitude as returned by `repeat_amplitude`.
-    measure : {'ptp', 'rms'}
-        Amplitude measure to plot.
-    '''
-    grouped = amplitude.groupby('frequency')
-    n_panels = len(grouped)
-    figure, axes = plt.subplots(2, n_panels, figsize=(4*n_panels, 6),
-                                squeeze=False, sharex=True)
-    label = {'ptp': 'Peak-to-peak', 'rms': 'RMS'}[measure]
-    for i, (frequency, data) in enumerate(grouped):
-        for level, level_data in data.groupby('level'):
-            repeat = level_data.index.get_level_values('repeat') + 1
-            l, = axes[0, i].plot(repeat, level_data[measure], 'o-', ms=3,
-                                 label=f'{level:.0f} dB SPL')
-            axes[1, i].plot(repeat, level_data[f'{measure}_norm'], 'o-', ms=3,
-                            color=l.get_color())
-        axes[0, i].set_title(freq_to_label(frequency, 'k'))
-        axes[1, i].axhline(1, color='k', ls=':', lw=0.5)
-        axes[1, i].set_xlabel('Burst #')
-    axes[0, 0].set_ylabel(f'{label} amplitude (V)')
-    axes[1, 0].set_ylabel('Re. first burst')
-    axes[0, -1].legend()
-    return figure
-
-
 ################################################################################
 # Summary
 ################################################################################
 def process_file(filename, manager, offset=-1e-3, duration=10e-3,
                  filter_settings='saved', n_epochs='saved', target_fs=12.5e3,
-                 amplitude_window=(1e-3, 6e-3), latency_correction=0,
-                 gain_correction=1, eeg_duration=2.5):
+                 latency_correction=0, gain_correction=1, eeg_duration=2.5):
     '''
     Extract ABR adaptation repeats, average and save result to CSV files
 
@@ -319,9 +273,6 @@ def process_file(filename, manager, offset=-1e-3, duration=10e-3,
         Lowest acceptable sampling rate after decimation. The decimation
         factor is chosen so that the bursts stay on whole samples (see
         `cftsdata.abr_adaptation.choose_downsample`).
-    amplitude_window : (float, float)
-        Window, in seconds re. burst onset, in which to measure the amplitude
-        of each repeat.
     latency_correction : float
         Correction, in seconds, to apply to timing of ABR. This allows us to
         retroactively correct for any ADC or DAC delays that were present in
@@ -380,23 +331,20 @@ def process_file(filename, manager, offset=-1e-3, duration=10e-3,
         repeats = fh.cut_repeats(trains, offset, duration)
         repeat_mean = average(repeats)
         train_mean = average(trains)
-        amplitude = repeat_amplitude(repeat_mean, amplitude_window,
-                                     fh.repeat_t0)
         cb(0.7)
 
         manager.save_dict(settings, SUFFIXES['processing_settings'])
         manager.save_dict(md, SUFFIXES['settings'])
         manager.save_df(repeat_mean, SUFFIXES['waveforms'])
         manager.save_df(train_mean, SUFFIXES['train_waveforms'])
-        manager.save_df(amplitude, SUFFIXES['amplitude'])
         manager.save_df(info, SUFFIXES['trials'])
 
-        manager.save_fig(plot_repeat_waveforms(repeat_mean, amplitude_window),
+        manager.save_fig(plot_repeat_waveforms(repeat_mean),
                          'ABR adaptation waveforms.pdf')
+        manager.save_fig(plot_repeat_overlay(repeat_mean),
+                         'ABR adaptation overlay.pdf')
         manager.save_fig(plot_train_waveforms(train_mean, fh.repeat_t0),
                          'ABR adaptation train.pdf')
-        manager.save_fig(plot_amplitude(amplitude),
-                         'ABR adaptation amplitude.pdf')
         cb(0.85)
 
         eeg_psd, eeg_rms = eeg_spectrum(fh, eeg_duration)
