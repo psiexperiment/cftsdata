@@ -303,14 +303,3 @@ def main():
                  duration=0.01)
     process_files(glob_pattern='**/*abr_io*', fn=fn,
                   expected_suffixes=abr_expected_suffixes, **args)
-
-
-def main_gui():
-    import enaml
-    from enaml.qt.qt_application import QtApplication
-    with enaml.imports():
-        from .summarize_abr_gui import SummarizeABRGui
-    app = QtApplication()
-    view = SummarizeABRGui()
-    view.show()
-    app.start()
