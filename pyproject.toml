@@ -35,6 +35,7 @@ cfts-zip-multirater-abr-data = "cftsdata.postprocess:zip_multirater_abr_data"
 cfts-invert-eeg-data = "cftsdata.postprocess:invert_eeg_data"
 
 summarize-abr = "cftsdata.summarize_abr:main"
+summarize-abr-adaptation = "cftsdata.summarize_abr_adaptation:main"
 summarize-abrpresto = "cftsdata.abrpresto:main"
 summarize-iec = "cftsdata.summarize_iec:main"
 summarize-dpoae = "cftsdata.summarize_dpoae:main_dpoae"

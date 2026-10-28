@@ -116,6 +116,55 @@ def plot_waveforms_cb(epochs_mean, filename, name):
     figure.savefig(filename)
 
 
+def eeg_spectrum(fh, duration=2.5):
+    '''
+    Spectrum and RMS of the start of the EEG
+
+    Useful for validating the settings on the amplifier. Using the same
+    duration for every dataset ensures that we have a consistent baseline
+    against which we can compare them. In general, even a single-frequency ABR
+    at 40/s will be a little over three minutes long, so the default of 2.5
+    minutes is available for every dataset.
+
+    Parameters
+    ----------
+    fh : ABRFile
+        Dataset to analyze.
+    duration : float
+        Duration of EEG to analyze, in minutes.
+
+    Returns
+    -------
+    psd : pd.Series
+        Power spectral density (dB re 1V) indexed by frequency.
+    rms : dict
+        RMS of the EEG and the number of one-second segments averaged to
+        compute the spectrum.
+    '''
+    eeg = fh.eeg.get_segment(0, 0, duration*60, channel=0)
+    n_averages = int(60 * duration)
+    psd = util.db(util.psd_df(eeg, fs=fh.eeg.fs, waveform_averages=n_averages))
+    rms = {
+        'eeg_rms': util.rms(eeg.values),
+        'eeg_n_averages': n_averages,
+    }
+    return psd.rename('psd'), rms
+
+
+def plot_eeg_spectrum(eeg_psd):
+    '''
+    Plot the EEG spectrum returned by `eeg_spectrum`
+    '''
+    figure, axes = plt.subplots(1, 1, figsize=(4, 4))
+    axes.plot(eeg_psd.iloc[1:], 'k-')
+    axes.set_xscale('octave', octaves=2)
+    axes.axis(xmin=10, xmax=10e3)
+    axes.set_xlabel('Frequency (kHz)')
+    axes.set_ylabel('PSD (dB re 1V)')
+    axes.axvline(60, ls=':', color='k')
+    return figure
+
+
 def process_file(filename, manager, offset=-1e-3, duration=10e-3,
                  filter_settings='saved', n_epochs='saved',
                  target_fs=12.5e3, analysis_window=None, latency_correction=0,
@@ -267,27 +316,10 @@ def process_file(filename, manager, offset=-1e-3, duration=10e-3,
                 filename.stem
             )
 
-        # Get the first 2.5 minutes of the EEG. In general, even a
-        # single-frequency ABR at 40/s will be a little over three minutes
-        # long, so this should ensure we have a consistent duration baseline
-        # against which we can compare all datasets.
-        eeg = fh.eeg.get_segment(0, 0, eeg_duration*60, channel=0)
-        n_averages = int(60 * eeg_duration)
-        eeg_psd = util.db(util.psd_df(eeg, fs=fh.eeg.fs, waveform_averages=n_averages))
-
-        eeg_figure, axes = plt.subplots(1, 1, figsize=(4, 4))
-        axes.plot(eeg_psd.iloc[1:], 'k-')
-        axes.set_xscale('octave', octaves=2)
-        axes.axis(xmin=10, xmax=10e3)
-        axes.set_xlabel('Frequency (kHz)')
-        axes.set_ylabel('PSD (dB re 1V)')
-        axes.axvline(60, ls=':', color='k')
-        manager.save_fig(eeg_figure, 'ABR eeg spectrum.pdf')
-        manager.save_dataframe(eeg_psd.rename('psd'), 'ABR eeg spectrum.csv')
-        manager.save_dict({
-            'eeg_rms': util.rms(eeg.values),
-            'eeg_n_averages': n_averages,
-        }, 'ABR eeg rms.json')
+        eeg_psd, eeg_rms = eeg_spectrum(fh, eeg_duration)
+        manager.save_fig(plot_eeg_spectrum(eeg_psd), 'ABR eeg spectrum.pdf')
+        manager.save_dataframe(eeg_psd, 'ABR eeg spectrum.csv')
+        manager.save_dict(eeg_rms, 'ABR eeg rms.json')
 
         cb(1.0)
         plt.close('all')

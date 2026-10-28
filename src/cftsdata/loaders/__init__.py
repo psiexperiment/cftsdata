@@ -21,4 +21,4 @@ writing your own loaders; `cftsdata.util` has the filename parser and the
 helpers for reshaping what the loaders return.
 '''
 from ._util import ensure_suffix
-from . import abr, dpoae, efr, memr, mlr_llr
+from . import abr, abr_adaptation, dpoae, efr, memr, mlr_llr
