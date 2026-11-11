@@ -13,14 +13,14 @@ from .loaders.efr import SUFFIXES
 
 import cftsdata
 import psiaudio
+# Registers the 'octave' axis scale
+import psiaudio.plot
+import psidata
 
 
 expected_suffixes = [
     SUFFIXES['psd'],
     SUFFIXES['harmonics'],
-    SUFFIXES['level'],
-    SUFFIXES['spl'],
-    'stimulus SPL.pdf',
     'EEG spectrum.pdf',
     SUFFIXES['processing_settings'],
 ]
@@ -66,37 +66,6 @@ def plot_eeg(eeg_bs_all, harmonics):
                 ax.axvline(i * fm, lw=3, alpha=0.1, color='k', zorder=0)
 
         axes[all_fm.index(fm), 0].axis(xmin=0, xmax=6*fm)
-
-    for i, fc in enumerate(all_fc):
-        axes[0, i].set_title(f'$f_c$ {fc*1e-3:.1f} kHz')
-    for i, fm in enumerate(all_fm):
-        axes[i, 0].set_ylabel(f'$f_m$ {fm:.0f} Hz\nPSD (dB re 1V)')
-
-    for ax in axes[-1]:
-        ax.set_xlabel('Frequency (Hz)')
-
-    return figure
-
-
-def plot_spl(spl, requested_level, actual_level):
-    all_fm = sorted(spl.index.unique('fm'))
-    all_fc = sorted(spl.index.unique('fc'))
-    n_fm = len(all_fm)
-    n_fc = len(all_fc)
-
-    figure, axes = plt.subplots(n_fm, n_fc, figsize=(4*n_fc, 4*n_fm),
-                                sharex='row', sharey='row', squeeze=False)
-
-    for fm, row_df in spl.groupby('fm'):
-        for fc, df in row_df.groupby('fc'):
-            ax = axes[all_fm.index(fm), all_fc.index(fc)]
-            x = df.reset_index(['fm', 'fc'], drop=True).loc[1:]
-            ax.plot(x)
-            ax.axhline(requested_level, color='forestgreen', label='Requested level')
-            ax.axhline(actual_level.loc[fm, fc], color='salmon', label='Actual level')
-
-        axes[all_fm.index(fm), 0].set_xscale('octave')
-        axes[all_fm.index(fm), 0].axis(xmin=5.6e3, xmax=45.2e3)
 
     for i, fc in enumerate(all_fc):
         axes[0, i].set_title(f'$f_c$ {fc*1e-3:.1f} kHz')
@@ -155,47 +124,6 @@ def bootstrap_eeg(eeg_df, n_draw, n_bootstrap, cb=None):
     return pd.concat(eeg_bs, names=['fm', 'fc'])
 
 
-def get_spl(mic_df, cal):
-    spl = {}
-    for key, df in mic_df.groupby(['fm', 'fc']):
-        n_pol = len(df.index.get_level_values('polarity').unique())
-        if n_pol == 2:
-            df_mean = df.groupby('polarity').mean()
-            df_mean = 0.5 * (df_mean.loc[1] - df_mean.loc[-1])
-        elif n_pol == 1:
-            df_mean = df.mean(axis=0)
-        else:
-            raise ValueError('Unexpected polarity')
-        psd = util.psd_df(df_mean, fs=mic_df.attrs['fs'], window='hann')
-        spl[key] = cal.get_db(psd)
-    return pd.concat(spl, names=['fm', 'fc']).rename('SPL')
-
-
-def get_level(mic_df, calibration, efr_type):
-    level_harmonics = np.arange(-10, 11) if efr_type == 'ram' else np.arange(-1, 2)
-
-    level_spl = {}
-    for (fm, fc), df in mic_df.groupby(['fm', 'fc']):
-        n_pol = len(df.index.get_level_values('polarity').unique())
-        if n_pol == 2:
-            df_mean = df.groupby('polarity').mean()
-            df_mean = 0.5 * (df_mean.loc[1] - df_mean.loc[-1])
-        elif n_pol == 1:
-            df_mean = df.mean(axis=0)
-
-        level_freqs = fc + fm * level_harmonics
-        max_freq = mic_df.attrs['fs'] * 0.5
-        level_freqs = level_freqs[(level_freqs > 0) & (level_freqs <= max_freq)]
-
-        psd = util.tone_power_conv(df_mean, mic_df.attrs['fs'], level_freqs)
-        spl = calibration.get_db(level_freqs, psd)
-        spl = pd.Series(spl, index=level_freqs, name='SPL')
-        spl.index.name = 'frequency'
-        level_spl[fm, fc] = spl
-
-    return pd.concat(level_spl, names=['fm', 'fc']).rename('SPL')
-
-
 def process_file(filename, manager, segment_duration=0.5, n_draw=128,
                  n_bootstrap=100, efr_harmonics=5, target_fs=12500):
     '''
@@ -241,18 +169,6 @@ def process_file(filename, manager, segment_duration=0.5, n_draw=128,
         manager.save_fig(spectrum_figure, 'EEG spectrum.pdf')
         manager.save_dict(settings, 'EFR processing settings.json')
 
-        if hasattr(fh, 'mic'):
-            mic_df = fh.get_mic_epochs(segment_duration=segment_duration,
-                                    columns=['fm', 'fc', 'polarity'])
-            cal = fh.system_microphone.get_calibration()
-            spl = get_spl(mic_df, cal)
-            level = get_level(mic_df, cal, fh.efr_type)
-            total_level = level.groupby(['fm', 'fc']).apply(lambda x: 10 * np.log10(np.sum(10**(x / 10))))
-            spl_figure = plot_spl(spl, fh.level, total_level)
-            manager.save_df(level, 'stimulus levels.csv')
-            manager.save_df(spl, 'stimulus SPL.csv')
-            manager.save_fig(spl_figure, 'stimulus SPL.pdf')
-
 
 def main():
     import argparse
@@ -263,3 +179,232 @@ def main():
                   expected_suffixes=expected_suffixes, **args)
     process_files(glob_pattern='**/*efr_sam*', fn=process_file,
                   expected_suffixes=expected_suffixes, **args)
+
+
+# Separate entrypoint for checking the stimulus for distortion artifacts
+
+EXPECTED_SUFFIXES_SPL = [
+    SUFFIXES['mic_spectrum'],
+    'mic spectrum.pdf',
+    SUFFIXES['mic_processing_settings'],
+]
+
+
+# Settings used by `process_file_spl`. Saved to the processing settings file.
+MIC_SETTINGS = {
+    # The averaged waveform is split into segments of this duration and the
+    # power of the segments averaged (i.e., Welch's method). The frequency
+    # resolution is 1 / segment_duration.
+    'segment_duration': 0.5,
+    'window': 'hann',
+    'detrend': 'constant',
+    # Number of harmonics of fm to mark in the plots.
+    'n_fm_harmonics': 5,
+}
+
+COMPONENT_LABELS = {
+    'difference': '(pos - neg) / 2: stimulus + odd-order distortion',
+    'sum': '(pos + neg) / 2: even-order distortion',
+    'single': 'single polarity',
+}
+
+
+def find_microphones(fh):
+    '''
+    Names of all microphone signals saved in the recording
+
+    The name depends on the version of the CFTS launcher and the hardware
+    (e.g., `system_microphone`, `starship_A_microphone_monitor`,
+    `microphone_monitor_monitor`).
+    '''
+    # psidata does not offer a public way to list the signals.
+    signals = set(fh._store.zarr_names) | set(fh._store.carray_names)
+    return sorted(s for s in signals if 'microphone' in s)
+
+
+def calibrated_range(cal):
+    '''
+    Range of frequencies (Hz) covered by the calibration, None if all
+    '''
+    frequency = getattr(cal, 'frequency', None)
+    if frequency is None:
+        return None
+    return [float(frequency.min()), float(frequency.max())]
+
+
+def get_db_calibrated(cal, psd):
+    '''
+    Convert `psd` to dB SPL, NaN at frequencies outside the calibrated range
+    '''
+    cal_range = calibrated_range(cal)
+    if cal_range is None:
+        return cal.get_db(psd)
+    lb, ub = cal_range
+    m = (psd.index >= lb) & (psd.index <= ub)
+    return cal.get_db(psd[m]).reindex(psd.index)
+
+
+def get_mic_spectrum(fh, mic, segment_duration, window, detrend, cb=None):
+    '''
+    Spectrum of the averaged stimulus recorded by the microphone
+
+    Epochs are averaged within polarity (time-locked to stimulus onset), then
+    combined across polarity (see `cftsdata.loaders.efr.mic_spectrum`). The
+    result is split into segments and the power of the segments averaged.
+
+    Returns
+    -------
+    spl : pd.DataFrame
+        Level (dB SPL) indexed by fm, fc and component, one column per
+        frequency.
+    n_epochs : dict
+        Number of epochs averaged, keyed by (fm, fc, polarity).
+    '''
+    md = fh.analyze_efr_metadata
+    duration = fh.get_setting('duration')
+    fs = mic.fs
+    cal = mic.get_calibration()
+    n_segment = int(round(segment_duration * fs))
+
+    spl = {}
+    n_epochs = {}
+    grouped = md.groupby(['fm', 'fc'])
+    for i, ((fm, fc), md_group) in enumerate(grouped):
+        # Load one stimulus at a time to limit memory use.
+        epochs = mic.get_epochs(md_group, 0, duration, detrend=detrend,
+                                columns=['polarity']).dropna()
+        epoch_mean = epochs.groupby('polarity').mean()
+        for p, n in epochs.groupby('polarity').size().items():
+            n_epochs[fm, fc, p] = n
+
+        polarities = sorted(epoch_mean.index)
+        if polarities == [-1, 1]:
+            pos, neg = epoch_mean.loc[1], epoch_mean.loc[-1]
+            components = {'difference': 0.5 * (pos - neg),
+                          'sum': 0.5 * (pos + neg)}
+        elif len(polarities) == 1:
+            components = {'single': epoch_mean.iloc[0]}
+        else:
+            raise ValueError(f'Unexpected polarities {polarities}')
+
+        for name, waveform in components.items():
+            n = len(waveform) // n_segment
+            if n == 0:
+                raise ValueError(f'Stimulus duration {duration} s is shorter '
+                                 f'than the segment duration {segment_duration} s')
+            segments = waveform.values[:n * n_segment].reshape((n, n_segment))
+            psd = util.psd_df(pd.DataFrame(segments), fs=fs, window=window)
+            # Average power across segments
+            psd = np.sqrt((psd ** 2).mean(axis=0))
+            spl[fm, fc, name] = get_db_calibrated(cal, psd)
+
+        if cb is not None:
+            cb((i + 1) / len(grouped))
+
+    spl = pd.DataFrame(spl).T
+    spl.index.names = ['fm', 'fc', 'component']
+    spl.columns.name = 'frequency'
+    return spl, n_epochs
+
+
+def plot_mic_spectrum(spl, channel, n_fm_harmonics):
+    '''
+    Plot the full spectrum and a zoom on the low frequencies around fm
+
+    One row per stimulus (fm, fc).
+    '''
+    groups = list(spl.groupby(['fm', 'fc']))
+    figure, axes = plt.subplots(len(groups), 2, figsize=(12, 3.5 * len(groups)),
+                                squeeze=False, constrained_layout=True)
+    nyquist = spl.columns.max()
+    for (ax_full, ax_zoom), ((fm, fc), df) in zip(axes, groups):
+        df = df.droplevel(['fm', 'fc'])
+        for component, row in df.iterrows():
+            label = COMPONENT_LABELS[component]
+            ax_full.plot(row.loc[1:], label=label, lw=0.5)
+            ax_zoom.plot(row.loc[:(n_fm_harmonics + 1) * fm], label=label)
+        harmonics = fm * np.arange(1, n_fm_harmonics + 1)
+        for ax in (ax_full, ax_zoom):
+            for h in harmonics:
+                ax.axvline(h, color='k', alpha=0.1, lw=3, zorder=0)
+        for h in fc * np.arange(1, 4):
+            if h < nyquist:
+                ax_full.axvline(h, color='darkred', alpha=0.2, lw=3, zorder=0)
+        ax_full.set_xscale('octave')
+        ax_full.axis(xmin=fm / 1.2, xmax=nyquist)
+        ax_full.set_xlabel('Frequency (kHz)')
+        ax_full.set_title(f'$f_m$ {fm:.0f} Hz, $f_c$ {fc * 1e-3:.2f} kHz')
+        ax_zoom.axis(xmin=0, xmax=(n_fm_harmonics + 1) * fm)
+        ax_zoom.set_xlabel('Frequency (Hz)')
+        ax_zoom.set_title(f'Harmonics of $f_m$ (1-{n_fm_harmonics})')
+        ax_full.set_ylabel('Level (dB SPL)')
+    axes[0, 1].legend(loc='upper right', fontsize=8)
+    figure.suptitle(f'{channel}\nGray: harmonics of $f_m$. Red: $f_c$, 2$f_c$, 3$f_c$')
+    return figure
+
+
+def process_file_spl(filename, manager):
+    with manager.create_cb() as cb:
+        fh = EFR(filename)
+        channels = find_microphones(fh)
+        if not channels:
+            raise ValueError('No microphone signal saved in recording')
+
+        md = fh.analyze_efr_metadata
+        settings = {
+            'filename': str(filename),
+            'creation_time': dt.datetime.now().isoformat(),
+            'version': {
+                'cftsdata': cftsdata.__version__,
+                'psiaudio': psiaudio.__version__,
+                'psidata': getattr(psidata, '__version__', None),
+            },
+            **MIC_SETTINGS,
+            'stimulus_duration': fh.get_setting('duration'),
+            'stimulus_system': md['system'].unique().tolist() if 'system' in md else None,
+            'components': COMPONENT_LABELS,
+            'channels': {},
+        }
+
+        spectra = {}
+        figures = []
+        for i, channel in enumerate(channels):
+            def channel_cb(frac, i=i):
+                cb((i + frac) / len(channels))
+            mic = getattr(fh, channel)
+            spl, n_epochs = get_mic_spectrum(
+                fh, mic, MIC_SETTINGS['segment_duration'],
+                MIC_SETTINGS['window'], MIC_SETTINGS['detrend'],
+                cb=channel_cb)
+            spectra[channel] = spl
+            figures.append(plot_mic_spectrum(spl, channel,
+                                             MIC_SETTINGS['n_fm_harmonics']))
+            cal = mic.get_calibration()
+            settings['channels'][channel] = {
+                'fs': mic.fs,
+                'calibration': type(cal).__name__,
+                # Levels outside this range are NaN in the spectrum
+                'calibrated_range': calibrated_range(cal),
+                'n_epochs': [
+                    {'fm': fm, 'fc': fc, 'polarity': p, 'n': n}
+                    for (fm, fc, p), n in n_epochs.items()
+                ],
+            }
+
+        spectra = pd.concat(spectra, names=['channel'])
+        manager.save_df(spectra, SUFFIXES['mic_spectrum'])
+        manager.save_figs(figures, 'mic spectrum.pdf')
+        manager.save_dict(settings, SUFFIXES['mic_processing_settings'])
+        for figure in figures:
+            plt.close(figure)
+
+
+def main_spl():
+    import argparse
+    parser = argparse.ArgumentParser('Summarize EFR microphone spectrum in folder')
+    add_default_options(parser)
+    args = vars(parser.parse_args())
+    process_files(glob_pattern='**/*efr_ram*', fn=process_file_spl,
+                  expected_suffixes=EXPECTED_SUFFIXES_SPL, **args)
+    process_files(glob_pattern='**/*efr_sam*', fn=process_file_spl,
+                  expected_suffixes=EXPECTED_SUFFIXES_SPL, **args)

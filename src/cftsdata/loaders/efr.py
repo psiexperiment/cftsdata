@@ -1,6 +1,8 @@
 '''
 Loaders for the data products written by `cftsdata.summarize_efr`
 '''
+import json
+
 import pandas as pd
 
 from psiaudio import util
@@ -11,9 +13,14 @@ from ._util import ensure_suffix
 SUFFIXES = {
     'psd': 'EEG bootstrapped.csv',
     'harmonics': 'EFR harmonics.csv',
+    # Written only by older versions of summarize_efr. The stimulus is now
+    # checked by the separate summarize-efr-spl entrypoint (`mic_spectrum`).
     'level': 'stimulus levels.csv',
     'spl': 'stimulus SPL.csv',
     'processing_settings': 'EFR processing settings.json',
+    # Written by `summarize_efr.process_file_spl`
+    'mic_spectrum': 'mic spectrum.csv',
+    'mic_processing_settings': 'mic processing settings.json',
     # Not written by summarize_efr. The total power is saved alongside the
     # harmonics by the analysis itself.
     'power': 'EFR.csv',
@@ -75,7 +82,7 @@ def harmonics(filename):
         df['frequency'] = df['harmonic']
         df['harmonic'] = df.eval('frequency / fm').astype('i')
     grouping = ['fc', 'fm', 'frequency', 'harmonic']
-    result = df.groupby(grouping).mean().reset_index()
+    result = df.groupby(grouping).mean()
     if 'bootstrap' in result:
         return result.drop(columns='bootstrap')
     return result
@@ -130,6 +137,44 @@ def level(filename, sum_harmonics=True):
             .apply(lambda x: util.db(util.dbi(x).sum())) \
             .reset_index()
     return result
+
+
+@ensure_suffix(SUFFIXES['mic_spectrum'])
+def mic_spectrum(filename):
+    '''
+    Load the stimulus spectrum measured by each microphone channel
+
+    Saved by `cftsdata.summarize_efr.process_file_spl`. Epochs are averaged
+    within polarity, then combined across polarity into `component`:
+
+    * 'difference', (pos - neg) / 2: the stimulus plus odd-order distortion.
+    * 'sum', (pos + neg) / 2: even-order distortion, including any energy at
+      the modulation frequency and its harmonics, which would survive the
+      polarity averaging of the EEG.
+    * 'single': the average for recordings with only one polarity.
+
+    Returns
+    -------
+    df : pd.DataFrame
+        Level (dB SPL) indexed by channel, fm, fc and component, one column per
+        spectral frequency (Hz). NaN at frequencies outside the range of the
+        microphone calibration.
+    '''
+    df = pd.read_csv(filename, index_col=['channel', 'fm', 'fc', 'component'])
+    df.columns = df.columns.astype(float)
+    return df
+
+
+@ensure_suffix(SUFFIXES['mic_processing_settings'])
+def mic_processing_settings(filename):
+    '''
+    Load the settings used by `cftsdata.summarize_efr.process_file_spl`
+
+    Returns
+    -------
+    settings : dict
+    '''
+    return json.loads(filename.read_text())
 
 
 def harmonics_suffix(method):
