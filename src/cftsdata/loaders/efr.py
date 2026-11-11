@@ -3,9 +3,8 @@ Loaders for the data products written by `cftsdata.summarize_efr`
 '''
 import json
 
+import numpy as np
 import pandas as pd
-
-from psiaudio import util
 
 from ._util import ensure_suffix
 
@@ -20,6 +19,7 @@ SUFFIXES = {
     'processing_settings': 'EFR processing settings.json',
     # Written by `summarize_efr.process_file_spl`
     'mic_spectrum': 'mic spectrum.csv',
+    'mic_levels': 'mic levels.csv',
     'mic_processing_settings': 'mic processing settings.json',
     # Not written by summarize_efr. The total power is saved alongside the
     # harmonics by the analysis itself.
@@ -133,8 +133,9 @@ def level(filename, sum_harmonics=True):
     '''
     result = pd.read_csv(filename).rename(columns={'SPL': 'level'})
     if sum_harmonics:
+        # Sum power (not amplitude) across the carrier and sidebands
         result = result.groupby(['fm', 'fc'])['level'] \
-            .apply(lambda x: util.db(util.dbi(x).sum())) \
+            .apply(lambda x: 10 * np.log10(np.sum(10 ** (x / 10)))) \
             .reset_index()
     return result
 
@@ -163,6 +164,41 @@ def mic_spectrum(filename):
     df = pd.read_csv(filename, index_col=['channel', 'fm', 'fc', 'component'])
     df.columns = df.columns.astype(float)
     return df
+
+
+@ensure_suffix(SUFFIXES['mic_levels'])
+def mic_levels(filename, sum_sidebands=True):
+    '''
+    Load the requested and actual stimulus level measured by each microphone
+
+    Saved by `cftsdata.summarize_efr.process_file_spl`. Measured from the
+    stimulus component (see `mic_spectrum`) at the carrier and sidebands,
+    `fc + sideband * fm` (-1 to 1 for SAM, -10 to 10 for RAM).
+
+    Parameters
+    ----------
+    filename : {str, pathlib.Path}
+        Dataset folder or the mic levels file itself.
+    sum_sidebands : bool
+        If True, sum power across the carrier and sidebands to give the actual
+        level of each stimulus.
+
+    Returns
+    -------
+    df : pd.DataFrame
+        If `sum_sidebands`, one row per channel, fm and fc with
+        `requested_level`, `actual_level` and `difference` (actual - requested).
+        Otherwise, one row per sideband with its `frequency` and `SPL`.
+    '''
+    df = pd.read_csv(filename)
+    if not sum_sidebands:
+        return df
+    result = df.groupby(['channel', 'fm', 'fc']).agg(
+        requested_level=('requested_level', 'first'),
+        actual_level=('SPL', lambda x: 10 * np.log10(np.sum(10 ** (x / 10)))),
+    )
+    result['difference'] = result['actual_level'] - result['requested_level']
+    return result.reset_index()
 
 
 @ensure_suffix(SUFFIXES['mic_processing_settings'])

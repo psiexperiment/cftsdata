@@ -185,6 +185,7 @@ def main():
 
 EXPECTED_SUFFIXES_SPL = [
     SUFFIXES['mic_spectrum'],
+    SUFFIXES['mic_levels'],
     'mic spectrum.pdf',
     SUFFIXES['mic_processing_settings'],
 ]
@@ -200,7 +201,12 @@ MIC_SETTINGS = {
     'detrend': 'constant',
     # Number of harmonics of fm to mark in the plots.
     'n_fm_harmonics': 5,
+    # Sidebands (fc + k * fm) summed to give the actual stimulus level.
+    'level_sidebands': {'sam': [-1, 0, 1], 'ram': list(range(-10, 11))},
 }
+
+# Component of the microphone signal containing the stimulus
+STIMULUS_COMPONENTS = ('difference', 'single')
 
 COMPONENT_LABELS = {
     'difference': '(pos - neg) / 2: stimulus + odd-order distortion',
@@ -244,9 +250,44 @@ def get_db_calibrated(cal, psd):
     return cal.get_db(psd[m]).reindex(psd.index)
 
 
-def get_mic_spectrum(fh, mic, segment_duration, window, detrend, cb=None):
+def get_requested_level(fh, md):
     '''
-    Spectrum of the averaged stimulus recorded by the microphone
+    Requested stimulus level (dB SPL) from the metadata for one stimulus
+    '''
+    column = 'target_tone_level' if fh.efr_type == 'ram' else 'target_sam_tone_level'
+    if column not in md:
+        return fh.level
+    levels = md[column].unique()
+    if len(levels) != 1:
+        raise ValueError(f'Multiple requested levels {levels} for one stimulus')
+    return float(levels[0])
+
+
+def get_stimulus_level(waveform, fs, cal, fm, fc, sidebands):
+    '''
+    Level (dB SPL) of the carrier and sidebands, fc + k * fm for k in sidebands
+
+    Sidebands above Nyquist or outside the calibrated range are skipped.
+    '''
+    k = np.asarray(sidebands)
+    frequency = fc + fm * k
+    m = (frequency > 0) & (frequency <= fs / 2)
+    cal_range = calibrated_range(cal)
+    if cal_range is not None:
+        m &= (frequency >= cal_range[0]) & (frequency <= cal_range[1])
+    k, frequency = k[m], frequency[m]
+    rms = util.tone_power_conv(waveform, fs, frequency)
+    return pd.DataFrame({
+        'sideband': k,
+        'frequency': frequency,
+        'SPL': cal.get_db(frequency, rms),
+    })
+
+
+def get_mic_spectrum(fh, mic, segment_duration, window, detrend, sidebands,
+                     cb=None):
+    '''
+    Spectrum and level of the averaged stimulus recorded by the microphone
 
     Epochs are averaged within polarity (time-locked to stimulus onset), then
     combined across polarity (see `cftsdata.loaders.efr.mic_spectrum`). The
@@ -257,6 +298,10 @@ def get_mic_spectrum(fh, mic, segment_duration, window, detrend, cb=None):
     spl : pd.DataFrame
         Level (dB SPL) indexed by fm, fc and component, one column per
         frequency.
+    levels : pd.DataFrame
+        Level of the carrier and each sideband in `sidebands` measured from the
+        stimulus component, with the requested level, one row per sideband
+        (see `cftsdata.loaders.efr.mic_levels`).
     n_epochs : dict
         Number of epochs averaged, keyed by (fm, fc, polarity).
     '''
@@ -267,6 +312,7 @@ def get_mic_spectrum(fh, mic, segment_duration, window, detrend, cb=None):
     n_segment = int(round(segment_duration * fs))
 
     spl = {}
+    levels = {}
     n_epochs = {}
     grouped = md.groupby(['fm', 'fc'])
     for i, ((fm, fc), md_group) in enumerate(grouped):
@@ -298,20 +344,53 @@ def get_mic_spectrum(fh, mic, segment_duration, window, detrend, cb=None):
             psd = np.sqrt((psd ** 2).mean(axis=0))
             spl[fm, fc, name] = get_db_calibrated(cal, psd)
 
+            if name in STIMULUS_COMPONENTS:
+                level = get_stimulus_level(waveform.values, fs, cal, fm, fc,
+                                           sidebands)
+                level.insert(0, 'requested_level', get_requested_level(fh, md_group))
+                levels[fm, fc] = level
+
         if cb is not None:
             cb((i + 1) / len(grouped))
 
     spl = pd.DataFrame(spl).T
     spl.index.names = ['fm', 'fc', 'component']
     spl.columns.name = 'frequency'
-    return spl, n_epochs
+    levels = pd.concat(levels, names=['fm', 'fc']) \
+        .reset_index(level=-1, drop=True).reset_index()
+    return spl, levels, n_epochs
 
 
-def plot_mic_spectrum(spl, channel, n_fm_harmonics):
+def total_level(levels):
+    '''
+    Sum the power across sidebands to give the actual level of each stimulus
+
+    Parameters
+    ----------
+    levels : pd.DataFrame
+        As returned by `get_mic_spectrum` (with an optional `channel` column).
+
+    Returns
+    -------
+    df : pd.DataFrame
+        `requested_level`, `actual_level` and `difference` (actual - requested)
+        for each stimulus.
+    '''
+    grouping = [c for c in ('channel', 'fm', 'fc') if c in levels]
+    result = levels.groupby(grouping).agg(
+        requested_level=('requested_level', 'first'),
+        actual_level=('SPL', lambda x: 10 * np.log10(np.sum(10 ** (x / 10)))),
+    )
+    result['difference'] = result['actual_level'] - result['requested_level']
+    return result
+
+
+def plot_mic_spectrum(spl, level, channel, n_fm_harmonics):
     '''
     Plot the full spectrum and a zoom on the low frequencies around fm
 
-    One row per stimulus (fm, fc).
+    One row per stimulus (fm, fc). The requested and actual level (see
+    `total_level`) are marked on the full spectrum.
     '''
     groups = list(spl.groupby(['fm', 'fc']))
     figure, axes = plt.subplots(len(groups), 2, figsize=(12, 3.5 * len(groups)),
@@ -321,7 +400,8 @@ def plot_mic_spectrum(spl, channel, n_fm_harmonics):
         df = df.droplevel(['fm', 'fc'])
         for component, row in df.iterrows():
             label = COMPONENT_LABELS[component]
-            ax_full.plot(row.loc[1:], label=label, lw=0.5)
+            # Components are labeled in the legend on the zoom panel
+            ax_full.plot(row.loc[1:], lw=0.5)
             ax_zoom.plot(row.loc[:(n_fm_harmonics + 1) * fm], label=label)
         harmonics = fm * np.arange(1, n_fm_harmonics + 1)
         for ax in (ax_full, ax_zoom):
@@ -330,6 +410,12 @@ def plot_mic_spectrum(spl, channel, n_fm_harmonics):
         for h in fc * np.arange(1, 4):
             if h < nyquist:
                 ax_full.axvline(h, color='darkred', alpha=0.2, lw=3, zorder=0)
+        requested, actual = level.loc[(fm, fc), ['requested_level', 'actual_level']]
+        ax_full.axhline(requested, color='forestgreen', ls='--',
+                        label=f'Requested level ({requested:.1f} dB SPL)')
+        ax_full.axhline(actual, color='salmon', ls='--',
+                        label=f'Actual level ({actual:.1f} dB SPL)')
+        ax_full.legend(loc='lower left', fontsize=8)
         ax_full.set_xscale('octave')
         ax_full.axis(xmin=fm / 1.2, xmax=nyquist)
         ax_full.set_xlabel('Frequency (kHz)')
@@ -366,18 +452,21 @@ def process_file_spl(filename, manager):
             'channels': {},
         }
 
+        sidebands = MIC_SETTINGS['level_sidebands'][fh.efr_type]
         spectra = {}
+        levels = {}
         figures = []
         for i, channel in enumerate(channels):
             def channel_cb(frac, i=i):
                 cb((i + frac) / len(channels))
             mic = getattr(fh, channel)
-            spl, n_epochs = get_mic_spectrum(
+            spl, level, n_epochs = get_mic_spectrum(
                 fh, mic, MIC_SETTINGS['segment_duration'],
-                MIC_SETTINGS['window'], MIC_SETTINGS['detrend'],
+                MIC_SETTINGS['window'], MIC_SETTINGS['detrend'], sidebands,
                 cb=channel_cb)
             spectra[channel] = spl
-            figures.append(plot_mic_spectrum(spl, channel,
+            levels[channel] = level
+            figures.append(plot_mic_spectrum(spl, total_level(level), channel,
                                              MIC_SETTINGS['n_fm_harmonics']))
             cal = mic.get_calibration()
             settings['channels'][channel] = {
@@ -392,7 +481,10 @@ def process_file_spl(filename, manager):
             }
 
         spectra = pd.concat(spectra, names=['channel'])
+        levels = pd.concat(levels, names=['channel']) \
+            .reset_index(level=-1, drop=True).reset_index()
         manager.save_df(spectra, SUFFIXES['mic_spectrum'])
+        manager.save_df(levels, SUFFIXES['mic_levels'], index=False)
         manager.save_figs(figures, 'mic spectrum.pdf')
         manager.save_dict(settings, SUFFIXES['mic_processing_settings'])
         for figure in figures:
