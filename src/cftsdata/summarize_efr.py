@@ -16,7 +16,7 @@ import psiaudio
 
 
 expected_suffixes = [
-    SUFFIXES['eeg_bootstrapped'],
+    SUFFIXES['psd'],
     SUFFIXES['harmonics'],
     SUFFIXES['level'],
     SUFFIXES['spl'],

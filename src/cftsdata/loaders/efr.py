@@ -9,7 +9,7 @@ from ._util import ensure_suffix
 
 
 SUFFIXES = {
-    'eeg_bootstrapped': 'EEG bootstrapped.csv',
+    'psd': 'EEG bootstrapped.csv',
     'harmonics': 'EFR harmonics.csv',
     'level': 'stimulus levels.csv',
     'spl': 'stimulus SPL.csv',
@@ -41,6 +41,11 @@ def _suffix(product, method):
         methods = ', '.join(METHOD_SUFFIXES[product])
         raise ValueError(f'Unrecognized method "{method}". '
                          f'Valid methods are {methods}.')
+
+
+@ensure_suffix(SUFFIXES['psd'])
+def psd(filename):
+    return pd.read_csv(filename, index_col=['fm', 'fc', 'frequency'])
 
 
 @ensure_suffix(SUFFIXES['harmonics'])

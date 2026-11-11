@@ -245,9 +245,9 @@ class ABRFile(Recording):
 
         if reject_threshold is None:
             return result
-        if reject_threshold is np.inf:
-            return result
-        if reject_threshold.startswith('saved'):
+        if isinstance(reject_threshold, str):
+            if not reject_threshold.startswith('saved'):
+                raise ValueError(f'Unsupported reject threshold "{reject_threshold}"')
             # 'reject_mode' wasn't added until a later version of the ABR
             # program, so we set it to the default that was used before if not
             # present.
@@ -257,16 +257,19 @@ class ABRFile(Recording):
                 reconcile = None
             reject_threshold = self.get_setting('reject_threshold', reconcile=reconcile)
             reject_mode = self.get_setting_default('reject_mode', 'absolute value')
+        if np.isinf(reject_threshold):
+            return result
 
-        if reject_mode == 'absolute value':
-            m = np.abs(result) < reject_threshold
-            m = m.all(axis=1)
-            result = result.loc[m]
+        # 'absolute' is the default in the method signatures; the experiment
+        # saves 'absolute value'. The criteria match those applied during
+        # acquisition by `psiaudio.pipeline.reject_epochs`.
+        if reject_mode in ('absolute', 'absolute value'):
+            m = result.abs().max(axis=1) < reject_threshold
         elif reject_mode == 'amplitude':
-            # TODO
-            raise NotImplementedError
-
-        return result
+            m = (result.max(axis=1) - result.min(axis=1)) < reject_threshold
+        else:
+            raise ValueError(f'Unsupported reject mode "{reject_mode}"')
+        return result.loc[m]
 
     def _apply_n(self, result, averages):
         '''
@@ -554,8 +557,12 @@ common_docstring = '''
                   use `reject-last`). Valid modes of reconcilation are listed
                   in `psidata.recording.Recording.get_setting`.
                 * float: Use the provided value.
-        reject_mode : string
-            Not imlemented
+        reject_mode : {'absolute', 'absolute value', 'amplitude'}
+            Criterion for a provided (float) reject threshold. 'absolute' and
+            'absolute value' reject epochs whose peak absolute value exceeds
+            the threshold. 'amplitude' rejects epochs whose peak-to-peak
+            amplitude exceeds the threshold. Ignored when `reject_threshold` is
+            'saved', in which case the saved reject mode is used.
         cb : {None, callable}
             If a callable is provided, this will be called with the current
             fraction of segments loaded from the file. This is useful when
