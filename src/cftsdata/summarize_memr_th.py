@@ -212,8 +212,9 @@ def process_keefe_th(filename, manager, freq_lb=5.6e3, freq_ub=16e3,
         t2_2samp = probe_csd.groupby('elicitor_level') \
             .apply(compute_ht2_2samp_keefe, train=probe_csd.loc[0])
 
-        # Compute the MEMR for plotting
-        probe_norm = (probe_csd / probe_csd.loc[0]).groupby('elicitor_level').mean()
+        # Compute the MEMR for plotting. Repeat 0 is the baseline, so leave it
+        # out of the average (including it would add rows that are exactly 1).
+        probe_norm = (probe_csd.loc[1:] / probe_csd.loc[0]).groupby('elicitor_level').mean()
 
         _process_th(manager, probe_norm, t2_2samp, kwargs)
 
