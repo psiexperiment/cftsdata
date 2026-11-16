@@ -9,7 +9,7 @@ from psiaudio.util import psd_df
 from psidata.api import Recording
 
 
-def add_trial(df, grouping):
+def add_trial_index(df, grouping):
     def _add_trial(df):
         df['trial'] = range(len(df))
         return df.set_index('trial', append=True)
@@ -86,7 +86,7 @@ class BaseMEMRFile(Recording):
         if add_trial:
             dtype = epochs.columns.dtype
             # This is converting a float column index to an object index.
-            epochs = util.add_trial(epochs, epochs.index.names[:-1])
+            epochs = add_trial_index(epochs, epochs.index.names[:-1])
             epochs.columns = epochs.columns.astype(dtype)
         return epochs
 
