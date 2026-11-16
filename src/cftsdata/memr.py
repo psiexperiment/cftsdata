@@ -105,8 +105,8 @@ class BaseMEMRFile(Recording):
         for i in range(n_probe):
             lb = int(round(t_repeat * i))
             ub = lb + s_repeat
-            repeat = epochs.iloc[:, lb:ub]
-            repeat.columns.values[:] = t_probe
+            repeat = epochs.iloc[:, lb:ub].set_axis(
+                pd.Index(t_probe, name=epochs.columns.name), axis=1)
             repeats.append(repeat)
             keys.append((i, lb / fs))
         return pd.concat(repeats, keys=keys, names=['repeat', 'probe_t0'])
