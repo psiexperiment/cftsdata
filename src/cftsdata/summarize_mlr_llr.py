@@ -20,6 +20,9 @@ EXPECTED_SUFFIXES = [
     SUFFIXES['abr_waveforms'],
     SUFFIXES['mlr_waveforms'],
     SUFFIXES['llr_waveforms'],
+    SUFFIXES['abr_noise_power'],
+    SUFFIXES['mlr_noise_power'],
+    SUFFIXES['llr_noise_power'],
     'waveforms.pdf',
     SUFFIXES['processing_settings'],
 ]
@@ -91,8 +94,45 @@ def bandpass(epochs, order, band):
     Zero-phase Butterworth bandpass of each epoch (row)
     '''
     b, a = signal.butter(order, band, 'band', fs=epochs.attrs['fs'])
-    return epochs.apply(lambda x: signal.filtfilt(b, a, x), axis=1,
-                        result_type='broadcast')
+    result = pd.DataFrame(signal.filtfilt(b, a, epochs.values, axis=1),
+                          index=epochs.index, columns=epochs.columns)
+    result.attrs.update(epochs.attrs)
+    return result
+
+
+def noise_power(epochs, grouping):
+    '''
+    Noise power of the average of `epochs` at each time point
+
+    This is the squared standard error of the mean (SEM²) of each group, from
+    the trial-to-trial variance pooled within polarity, so a difference between
+    the rarefaction and condensation responses (which the polarity average
+    keeps) isn't counted as noise. It is the expected power of the average when
+    there is no response, and assumes trials are independent.
+
+    Subtract its mean over a window from the mean of the squared average over
+    the same window to get the response power in that window with the noise
+    removed (zero on average when there is no response).
+
+    Parameters
+    ----------
+    epochs : pd.DataFrame
+        Single trials, with `grouping` and `polarity` in the index.
+    grouping : list of str
+        Index levels to average over (e.g., frequency and level).
+
+    Returns
+    -------
+    noise : pd.DataFrame
+        SEM² (V²) indexed by `grouping`, one column per time point.
+    '''
+    by_polarity = grouping + ['polarity']
+    deviation = epochs - epochs.groupby(by_polarity).transform('mean')
+    sum_squares = (deviation ** 2).groupby(grouping).sum()
+    n = epochs.groupby(grouping).size()
+    n_polarity = epochs.groupby(by_polarity).size().groupby(grouping).size()
+    variance = sum_squares.div(n - n_polarity, axis=0)
+    return variance.div(n, axis=0)
 
 
 def run_info(filename):
@@ -113,7 +153,7 @@ def run_info(filename):
 def load_epochs(fh, average=True, reject_threshold=None,
                 reject_mode='absolute value', reject_filter=None,
                 averages=None, offset=-100e-3, duration=400e-3, target_fs=10e3,
-                filters=None):
+                filters=None, return_noise=False):
     '''
     Load MLR/LLR epochs and extract the ABR, MLR and LLR bands
 
@@ -125,7 +165,24 @@ def load_epochs(fh, average=True, reject_threshold=None,
     If `average` is True, `epoch_n` (number of epochs averaged) and
     `epoch_reject_ratio` (fraction of epochs rejected) are appended to the
     (frequency, level) index, as in the ABR average waveforms.
+
+    If `return_noise` is True (requires `average`), also return the noise
+    power of each band's average (see `noise_power`), trimmed to the band's
+    window and with the same index as the averages. Each band is then filtered
+    once, trial by trial, and both the band's average and its noise power come
+    from those filtered trials. Without `return_noise`, the average is filtered
+    instead, which is cheaper. Filtering is linear, so the two averages agree
+    up to rounding.
+
+    Returns
+    -------
+    result : dict
+        Waveforms for `raw` and each band in `filters`.
+    noise : dict
+        Only if `return_noise`. Noise power (V²) for each band in `filters`.
     '''
+    if return_noise and not average:
+        raise ValueError('return_noise requires average')
     if filters is None:
         filters = FILTERS
     if reject_filter is None:
@@ -148,6 +205,7 @@ def load_epochs(fh, average=True, reject_threshold=None,
     epoch_reject_ratio = 1 - accepted.groupby(grouping).mean()
     epochs = fh._apply_n(epochs, averages)
 
+    trials = epochs
     if average:
         epoch_n = epochs.groupby(grouping).size()
         epochs = epochs.groupby(grouping).mean()
@@ -155,12 +213,28 @@ def load_epochs(fh, average=True, reject_threshold=None,
             'epoch_n': epoch_n,
             'epoch_reject_ratio': epoch_reject_ratio,
         }).loc[epochs.index]
-        epochs.index = pd.MultiIndex.from_frame(epoch_info.reset_index())
+        info_index = pd.MultiIndex.from_frame(epoch_info.reset_index())
+        epochs.index = info_index
 
     result = {'raw': epochs}
+    noise = {}
     for name, f in filters.items():
         lb, ub = f['window']
-        result[name] = bandpass(epochs, f['order'], f['band']).loc[:, lb:ub]
+        if return_noise:
+            # Average and noise power from the same filtered trials.
+            filtered = bandpass(trials, f['order'], f['band']).loc[:, lb:ub]
+            band_average = filtered.groupby(grouping).mean().loc[epoch_info.index]
+            band_noise = noise_power(filtered, grouping).loc[epoch_info.index]
+            band_average.index = info_index
+            band_noise.index = info_index
+            result[name] = band_average
+            noise[name] = band_noise
+        else:
+            # Filtering the average is much cheaper than filtering every trial
+            # and gives the same result, since filtering is linear.
+            result[name] = bandpass(epochs, f['order'], f['band']).loc[:, lb:ub]
+    if return_noise:
+        return result, noise
     return result
 
 
@@ -190,7 +264,7 @@ def plot_epochs(epochs):
 def process_file(filename, manager):
     with manager.create_cb() as cb:
         fh = abr.load(filename)
-        epochs = load_epochs(fh, **EPOCH_SETTINGS)
+        epochs, noise = load_epochs(fh, return_noise=True, **EPOCH_SETTINGS)
         figure = plot_epochs(epochs)
 
         settings = {
@@ -208,10 +282,14 @@ def process_file(filename, manager):
             'downsample': get_downsample(fh.eeg.fs, EPOCH_SETTINGS['target_fs']),
             'epoch_fs': epochs['raw'].attrs['fs'],
             'filter_type': 'butterworth bandpass, zero-phase (filtfilt)',
+            'noise_power': 'squared SEM of the average: within-polarity '
+                           'variance of the filtered trials, pooled, / epoch_n',
         }
 
         for k, v in epochs.items():
             manager.save_dataframe(v, f'{k} average waveforms.csv')
+        for k, v in noise.items():
+            manager.save_dataframe(v, SUFFIXES[f'{k.lower()}_noise_power'])
         manager.save_fig(figure, 'waveforms.pdf')
         manager.save_dict(settings, SUFFIXES['processing_settings'])
 

@@ -13,6 +13,9 @@ SUFFIXES = {
     'abr_waveforms': 'ABR average waveforms.csv',
     'mlr_waveforms': 'MLR average waveforms.csv',
     'llr_waveforms': 'LLR average waveforms.csv',
+    'abr_noise_power': 'ABR noise power.csv',
+    'mlr_noise_power': 'MLR noise power.csv',
+    'llr_noise_power': 'LLR noise power.csv',
     'stimulus_waveforms': 'stimulus waveforms.csv',
     'stimulus_spl': 'stimulus SPL.csv',
     'processing_settings': 'MLR LLR processing settings.json',
@@ -106,6 +109,62 @@ def llr_waveforms(filename):
     See `abr_waveforms` for the return value.
     '''
     return waveforms(filename)
+
+
+def noise_power(filename):
+    '''
+    Load any of the noise power files saved by
+    `cftsdata.summarize_mlr_llr.process_file`
+
+    Use `abr_noise_power`, `mlr_noise_power` or `llr_noise_power` to name the
+    band instead, which also lets you pass the dataset folder rather than the
+    file.
+
+    The noise power is the squared standard error of the mean (SEM², V²) of
+    the matching average waveform at each time point (see
+    `cftsdata.summarize_mlr_llr.noise_power`). It has the same index and time
+    points as the average waveforms, with `epoch_n` and `epoch_reject_ratio`
+    dropped. The response power in a window with the noise removed is:
+
+        power = (average.loc[:, lb:ub] ** 2).mean(axis=1)
+        excess = power - noise.loc[:, lb:ub].mean(axis=1)
+
+    `excess` is zero on average when there is no response and can be negative
+    for a single session. Average it across sessions in linear units and take
+    any square root or dB at the end.
+    '''
+    df = _read_waveforms(filename)
+    return df.droplevel([n for n in EPOCH_INFO if n in df.index.names])
+
+
+@ensure_suffix(SUFFIXES['abr_noise_power'])
+def abr_noise_power(filename):
+    '''
+    Load the noise power of the average ABR waveforms
+
+    See `noise_power`.
+    '''
+    return noise_power(filename)
+
+
+@ensure_suffix(SUFFIXES['mlr_noise_power'])
+def mlr_noise_power(filename):
+    '''
+    Load the noise power of the average MLR waveforms
+
+    See `noise_power`.
+    '''
+    return noise_power(filename)
+
+
+@ensure_suffix(SUFFIXES['llr_noise_power'])
+def llr_noise_power(filename):
+    '''
+    Load the noise power of the average LLR waveforms
+
+    See `noise_power`.
+    '''
+    return noise_power(filename)
 
 
 @ensure_suffix(SUFFIXES['stimulus_waveforms'])
