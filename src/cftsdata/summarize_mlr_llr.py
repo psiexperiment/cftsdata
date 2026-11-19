@@ -32,12 +32,14 @@ EXPECTED_SUFFIXES = [
 # configurable.
 EPOCH_COLUMNS = ['frequency', 'level', 'polarity']
 
-# Each band is extracted from the averaged epoch with a zero-phase
-# (`filtfilt`) Butterworth bandpass, then trimmed to `window` (s).
+# Each band is extracted from the epochs with a zero-phase (`filtfilt`)
+# Butterworth bandpass. The average and noise power of every band are saved
+# over the full epoch, so response windows can be chosen at analysis time.
+# `plot_window` (s) only sets the time range shown in `waveforms.pdf`.
 FILTERS = {
-    'ABR': {'order': 2, 'band': [300, 3000], 'window': [-0.001, 0.01]},
-    'MLR': {'order': 2, 'band': [10, 100], 'window': [-0.01, 0.05]},
-    'LLR': {'order': 2, 'band': [1, 30], 'window': [-0.05, 0.3]},
+    'ABR': {'order': 2, 'band': [300, 3000], 'plot_window': [-0.001, 0.01]},
+    'MLR': {'order': 2, 'band': [10, 100], 'plot_window': [-0.01, 0.05]},
+    'LLR': {'order': 2, 'band': [1, 30], 'plot_window': [-0.05, 0.3]},
 }
 
 # Artifact reject is applied to the epochs filtered with the ABR band since the
@@ -166,9 +168,13 @@ def load_epochs(fh, average=True, reject_threshold=None,
     `epoch_reject_ratio` (fraction of epochs rejected) are appended to the
     (frequency, level) index, as in the ABR average waveforms.
 
+    Each band is returned over the full epoch (`offset` to `offset +
+    duration`), not trimmed to its `plot_window`, so that any response window
+    can be measured later.
+
     If `return_noise` is True (requires `average`), also return the noise
-    power of each band's average (see `noise_power`), trimmed to the band's
-    window and with the same index as the averages. Each band is then filtered
+    power of each band's average (see `noise_power`) at every time point,
+    with the same index as the averages. Each band is then filtered
     once, trial by trial, and both the band's average and its noise power come
     from those filtered trials. Without `return_noise`, the average is filtered
     instead, which is cheaper. Filtering is linear, so the two averages agree
@@ -219,10 +225,9 @@ def load_epochs(fh, average=True, reject_threshold=None,
     result = {'raw': epochs}
     noise = {}
     for name, f in filters.items():
-        lb, ub = f['window']
         if return_noise:
             # Average and noise power from the same filtered trials.
-            filtered = bandpass(trials, f['order'], f['band']).loc[:, lb:ub]
+            filtered = bandpass(trials, f['order'], f['band'])
             band_average = filtered.groupby(grouping).mean().loc[epoch_info.index]
             band_noise = noise_power(filtered, grouping).loc[epoch_info.index]
             band_average.index = info_index
@@ -232,13 +237,15 @@ def load_epochs(fh, average=True, reject_threshold=None,
         else:
             # Filtering the average is much cheaper than filtering every trial
             # and gives the same result, since filtering is linear.
-            result[name] = bandpass(epochs, f['order'], f['band']).loc[:, lb:ub]
+            result[name] = bandpass(epochs, f['order'], f['band'])
     if return_noise:
         return result, noise
     return result
 
 
-def plot_epochs(epochs):
+def plot_epochs(epochs, filters=None):
+    if filters is None:
+        filters = FILTERS
     freq = epochs['ABR'].index.unique('frequency')
     figure, axes = plt.subplots(3, len(freq), figsize=(4 * len(freq), 12), squeeze=False)
 
@@ -246,7 +253,8 @@ def plot_epochs(epochs):
     for col, f in zip(axes.T, freq):
         for ax, name in zip(col, ('ABR', 'MLR', 'LLR')):
             ax.set_xlabel('Time (s)')
-            w = epochs_grouped[name].get_group(f)
+            lb, ub = filters[name]['plot_window']
+            w = epochs_grouped[name].get_group(f).loc[:, lb:ub]
             plot.waterfall_plot(ax, w)
             if name == 'MLR':
                 ax.axvspan(0, 0.01, alpha=0.25)
@@ -265,7 +273,7 @@ def process_file(filename, manager):
     with manager.create_cb() as cb:
         fh = abr.load(filename)
         epochs, noise = load_epochs(fh, return_noise=True, **EPOCH_SETTINGS)
-        figure = plot_epochs(epochs)
+        figure = plot_epochs(epochs, EPOCH_SETTINGS['filters'])
 
         settings = {
             **run_info(filename),
@@ -282,6 +290,8 @@ def process_file(filename, manager):
             'downsample': get_downsample(fh.eeg.fs, EPOCH_SETTINGS['target_fs']),
             'epoch_fs': epochs['raw'].attrs['fs'],
             'filter_type': 'butterworth bandpass, zero-phase (filtfilt)',
+            'saved_window': 'full epoch for every band (plot_window is the '
+                            'range shown in waveforms.pdf only)',
             'noise_power': 'squared SEM of the average: within-polarity '
                            'variance of the filtered trials, pooled, / epoch_n',
         }
